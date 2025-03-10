@@ -17,10 +17,13 @@ contract CacheManagerProxy {
         uint256 maxBid;
         bool enabled;
     }
+    struct UserConfig {
+        ContractConfig[] contracts;
+        uint256 balance;
+    }
     ICacheManager public immutable cacheManager;
     address public owner;
-    mapping(address => ContractConfig[]) public userContracts;
-    mapping(address => uint256) private userBalances;
+    mapping(address => UserConfig) public userConfig;
     // Events
     event ContractAdded(
         address indexed user,
@@ -58,7 +61,7 @@ contract CacheManagerProxy {
         require(_contract != address(0), "Invalid contract address");
         require(_maxBid > 0, "Max bid must be greater than zero");
 
-        ContractConfig[] storage contracts = userContracts[msg.sender];
+        ContractConfig[] storage contracts = userConfig[msg.sender].contracts;
         uint256 length = contracts.length;
         bool found = false;
 
@@ -82,22 +85,22 @@ contract CacheManagerProxy {
             );
         }
 
-        userBalances[msg.sender] += msg.value;
+        userConfig[msg.sender].balance += msg.value;
         emit ContractAdded(msg.sender, _contract, _maxBid);
     }
     function getUserContracts(
         address _user
     ) external view returns (ContractConfig[] memory) {
-        return userContracts[_user];
+        return userConfig[_user].contracts;
     }
     //TODO validate if this info needs to be public
     function getUserBalance() external view returns (uint256) {
-        return userBalances[msg.sender];
+        return userConfig[msg.sender].balance;
     }
     function removeContract(address _contract) external {
         require(_contract != address(0), "Invalid contract address");
 
-        ContractConfig[] storage contracts = userContracts[msg.sender];
+        ContractConfig[] storage contracts = userConfig[msg.sender].contracts;
         uint256 length = contracts.length;
         require(length > 0, "No contracts to remove");
 
@@ -117,7 +120,7 @@ contract CacheManagerProxy {
         emit ContractRemoved(msg.sender, _contract);
     }
     function removeAllContracts() external {
-        ContractConfig[] storage contracts = userContracts[msg.sender];
+        ContractConfig[] storage contracts = userConfig[msg.sender].contracts;
         uint256 length = contracts.length;
         require(length > 0, "No contracts to remove");
 
@@ -126,47 +129,36 @@ contract CacheManagerProxy {
             emit ContractRemoved(msg.sender, contracts[i].contractAddress);
         }
         // Clear user's contract list
-        delete userContracts[msg.sender];
+        delete userConfig[msg.sender].contracts;
     }
-    function placeUserBid(address _contract) external payable {
-        require(_contract != address(0), "Invalid contract address");
-
-        // Check if contract exists in the user's list
-        bool exists = false;
-        uint256 maxBid;
-        ContractConfig[] storage contracts = userContracts[msg.sender];
-
-        for (uint256 i = 0; i < contracts.length; i++) {
-            if (contracts[i].contractAddress == _contract) {
-                exists = true;
-                maxBid = contracts[i].maxBid;
-                break;
-            }
-        }
-
-        // If not found, add the contract with the sent value as maxBid
-        if (!exists) {
-            maxBid = msg.value; // Use the sent value as maxBid
-            userContracts[msg.sender].push(
-                ContractConfig({
-                    contractAddress: _contract,
-                    maxBid: maxBid,
-                    enabled: true
-                })
-            );
-            emit ContractAdded(msg.sender, _contract, maxBid);
-        }
-        // Check the minimum bid required
+    function placeUserBid(
+        address _user,
+        address _contract,
+        uint256 _bid
+    ) internal {
         uint192 minBid = cacheManager.getMinBid(_contract);
-        require(msg.value >= minBid, "Insufficient bid amount");
+        require(_bid >= minBid, "Insufficient bid amount");
+
+        // Get initial gas left
+        uint256 initialGas = gasleft();
+
         // Place the bid
-        cacheManager.placeBid{value: msg.value}(_contract);
-        emit BidPlaced(msg.sender, _contract, msg.value);
+        cacheManager.placeBid{value: _bid}(_contract);
+
+        // Estimate gas used
+        uint256 gasUsed = initialGas - gasleft();
+        uint256 gasCost = gasUsed * tx.gasprice; // Calculate gas cost
+
+        // Deduct total spent (bid + gas cost) from user balance
+        uint256 totalCost = _bid + gasCost;
+        require(
+            userConfig[_user].balance >= totalCost,
+            "Insufficient balance for fees"
+        );
+        userConfig[_user].balance -= totalCost;
+
+        emit BidPlaced(_user, _contract, _bid);
     }
 
     receive() external payable {}
-
-    //TODO
-    // function to withdraw balance
-    // function to send balance
 }
