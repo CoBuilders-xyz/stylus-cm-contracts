@@ -1,5 +1,6 @@
 import { expect } from 'chai';
 import hre from 'hardhat';
+import { Wallet } from 'ethers';
 import dotenv from 'dotenv';
 import {
   CMPDeployment,
@@ -76,6 +77,13 @@ describe('CacheManagerProxy', async function () {
       expect(userContracts[0].contractAddress).to.equal(contractToCacheAddress);
       expect(userContracts[0].maxBid).to.equal(maxBid);
       expect(userBalance).to.equal(biddingFunds);
+
+      // Check user was added to userAddresses
+      // OnlyOwner function
+      const userAddresses = await cmpDeployment.cacheManagerProxy
+        .connect(user)
+        .getUserAddresses();
+      expect(userAddresses.includes(user.address)).to.equal(true);
     });
     it('Should insert several contracts to CMP', async function () {
       const dummyContractsAmount = dummyContracts.length;
@@ -116,13 +124,20 @@ describe('CacheManagerProxy', async function () {
         expect(userContracts[i].maxBid).to.equal(maxBid);
       }
       expect(userBalance).to.equal(biddingFunds.reduce((a, b) => a + b));
+
+      // Check user was added to userAddresses
+      // OnlyOwner function
+      const userAddresses = await cmpDeployment.cacheManagerProxy
+        .connect(user)
+        .getUserAddresses();
+      expect(userAddresses.includes(user.address)).to.equal(true);
     });
     it('Should insert several contracts from diff wallets to CMP', async function () {
       const dummyContractsAmount = dummyContracts.length;
       const [mainWallet] = await hre.ethers.getSigners();
       const maxBid = hre.ethers.parseEther('0.1');
       const contractAddresses = [];
-      const extraWallets = [];
+      const extraWallets: Wallet[] = [];
       const biddingFunds = [];
 
       // Generate additional wallets
@@ -174,6 +189,17 @@ describe('CacheManagerProxy', async function () {
         expect(userContracts[0].contractAddress).to.equal(contractAddresses[i]);
         expect(userContracts[0].maxBid).to.equal(maxBid);
         expect(userBalance).to.equal(biddingFunds[i]);
+
+        // Check user was added to userAddresses
+        // OnlyOwner function
+        const userAddresses = await cmpDeployment.cacheManagerProxy
+          .connect(mainWallet)
+          .getUserAddresses();
+        expect(
+          userAddresses.filter((address) =>
+            extraWallets.map((wallet) => wallet.address).includes(address)
+          ).length
+        ).to.equal(dummyContractsAmount);
       }
     });
     it('Should remove a contract from CMP', async function () {
@@ -204,6 +230,12 @@ describe('CacheManagerProxy', async function () {
         user.address
       );
       expect(userContracts.length).to.equal(0);
+
+      // Check user with 0 contracts was removed from userAddresses list
+      // OnlyOwner function
+      const userAddresses =
+        await cmpDeployment.cacheManagerProxy.getUserAddresses();
+      expect(userAddresses.includes(user.address)).to.equal(false);
     });
     it('Should remove all contracts from CMP', async function () {
       const dummyContractsAmount = dummyContracts.length;
@@ -245,6 +277,12 @@ describe('CacheManagerProxy', async function () {
         user.address
       );
       expect(userContracts.length).to.equal(0);
+
+      // Check user with 0 contracts was removed from userAddresses list
+      // OnlyOwner function
+      const userAddresses =
+        await cmpDeployment.cacheManagerProxy.getUserAddresses();
+      expect(userAddresses.length).to.equal(0);
     });
     it('Should remove some contracts from diff wallets while others remain', async function () {
       const dummyContractsAmount = dummyContracts.length;
@@ -301,6 +339,11 @@ describe('CacheManagerProxy', async function () {
             extraWallets[i].address
           );
         expect(userContracts.length).to.equal(0);
+
+        const userAddresses = await cmpDeployment.cacheManagerProxy
+          .connect(mainWallet)
+          .getUserAddresses();
+        expect(userAddresses.includes(extraWallets[i].address)).to.equal(false);
       }
 
       // Validate contracts still exist for the other half
@@ -315,6 +358,11 @@ describe('CacheManagerProxy', async function () {
           );
         expect(userContracts.length).to.equal(1);
         expect(userContracts[0].contractAddress).to.equal(contractAddresses[i]);
+
+        const userAddresses = await cmpDeployment.cacheManagerProxy
+          .connect(mainWallet)
+          .getUserAddresses();
+        expect(userAddresses.includes(extraWallets[i].address)).to.equal(true);
       }
     });
     it('Should add and remove contracts from diff wallets in random order', async function () {
@@ -397,6 +445,12 @@ describe('CacheManagerProxy', async function () {
           .getUserBalance();
         expect(userBalance).to.equal(biddingFunds[i]);
       }
+
+      // Check users were removed from userAddresses list
+      // OnlyOwner function
+      const userAddresses =
+        await cmpDeployment.cacheManagerProxy.getUserAddresses();
+      expect(userAddresses.length).to.equal(0);
     });
   });
 

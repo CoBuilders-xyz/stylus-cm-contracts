@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.19;
+pragma solidity 0.8.20;
 
 import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol";
+import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 interface ICacheManager {
     function getMinBid(address program) external view returns (uint192);
     function placeBid(address program) external payable;
-    function cacheSize() external view returns (uint64);
-    function queueSize() external view returns (uint64);
 }
 
 contract CacheManagerProxy {
+    using EnumerableSet for EnumerableSet.AddressSet;
+
     // Variables
     struct ContractConfig {
         address contractAddress;
@@ -23,7 +24,10 @@ contract CacheManagerProxy {
     }
     ICacheManager public immutable cacheManager;
     address public owner;
+
     mapping(address => UserConfig) public userConfig;
+    EnumerableSet.AddressSet private userAddresses;
+
     // Events
     event ContractAdded(
         address indexed user,
@@ -39,11 +43,22 @@ contract CacheManagerProxy {
         address indexed user,
         address indexed contractAddress
     );
+    event BalanceUpdated(address indexed user, uint256 newBalance);
 
     // Modifiers
     modifier onlyOwner() {
         require(msg.sender == owner, "Not contract owner");
         _;
+    }
+
+    // Admin Methods
+    function getUserAddresses()
+        external
+        view
+        onlyOwner
+        returns (address[] memory)
+    {
+        return userAddresses.values();
     }
 
     // Methods
@@ -61,14 +76,13 @@ contract CacheManagerProxy {
         require(_contract != address(0), "Invalid contract address");
         require(_maxBid > 0, "Max bid must be greater than zero");
 
-        ContractConfig[] storage contracts = userConfig[msg.sender].contracts;
-        uint256 length = contracts.length;
+        UserConfig storage user = userConfig[msg.sender];
+        ContractConfig[] storage contracts = user.contracts;
         bool found = false;
 
-        for (uint256 i = 0; i < length; i++) {
+        for (uint256 i = 0; i < contracts.length; i++) {
             if (contracts[i].contractAddress == _contract) {
-                // If contract already exists, update maxBid and add value to userBalance
-                contracts[i].maxBid = _maxBid;
+                contracts[i].maxBid = _maxBid; // Update maxBid if exists
                 found = true;
                 break;
             }
@@ -85,7 +99,9 @@ contract CacheManagerProxy {
             );
         }
 
-        userConfig[msg.sender].balance += msg.value;
+        user.balance += msg.value;
+        userAddresses.add(msg.sender); // Track user address in EnumerableSet
+
         emit ContractAdded(msg.sender, _contract, _maxBid);
     }
     function getUserContracts(
@@ -101,20 +117,24 @@ contract CacheManagerProxy {
         require(_contract != address(0), "Invalid contract address");
 
         ContractConfig[] storage contracts = userConfig[msg.sender].contracts;
-        uint256 length = contracts.length;
-        require(length > 0, "No contracts to remove");
+        require(contracts.length > 0, "No contracts to remove");
 
         bool found = false;
-        for (uint256 i = 0; i < length; i++) {
+        for (uint256 i = 0; i < contracts.length; i++) {
             if (contracts[i].contractAddress == _contract) {
-                found = true;
-                contracts[i] = contracts[length - 1]; // Swap with last element
+                contracts[i] = contracts[contracts.length - 1]; // Swap with last element
                 contracts.pop(); // Remove last element
+                found = true;
                 break;
             }
         }
 
         require(found, "Contract not found");
+
+        // If user has no contracts left, remove from tracking
+        if (contracts.length == 0) {
+            userAddresses.remove(msg.sender);
+        }
 
         // Emit event after successful removal
         emit ContractRemoved(msg.sender, _contract);
@@ -130,6 +150,7 @@ contract CacheManagerProxy {
         }
         // Clear user's contract list
         delete userConfig[msg.sender].contracts;
+        userAddresses.remove(msg.sender);
     }
     function placeUserBid(
         address _user,
