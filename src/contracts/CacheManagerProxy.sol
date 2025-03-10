@@ -15,17 +15,27 @@ contract CacheManagerProxy {
     struct ContractConfig {
         address contractAddress;
         uint256 maxBid;
-        uint256 biddingFunds;
         bool enabled;
     }
     ICacheManager public immutable cacheManager;
     address public owner;
     mapping(address => ContractConfig[]) public userContracts;
-    mapping(address => uint256) public userBalances;
+    mapping(address => uint256) private userBalances;
     // Events
-    event ContractAdded(address indexed user, address indexed contractAddress, uint256 maxBid);
-    event BidPlaced(address indexed user, address indexed contractAddress, uint256 bidAmount);
-    event ContractRemoved(address indexed user, address indexed contractAddress);
+    event ContractAdded(
+        address indexed user,
+        address indexed contractAddress,
+        uint256 maxBid
+    );
+    event BidPlaced(
+        address indexed user,
+        address indexed contractAddress,
+        uint256 bidAmount
+    );
+    event ContractRemoved(
+        address indexed user,
+        address indexed contractAddress
+    );
 
     // Modifiers
     modifier onlyOwner() {
@@ -40,18 +50,49 @@ contract CacheManagerProxy {
         owner = msg.sender;
     }
 
-    // TODO Hanlde already exists case
-    function addContract(address _contract, uint256 _maxBid) external payable{
+    // TODO Add Testing for userBalance and already exist contract.
+    function insertOrUpdateContract(
+        address _contract,
+        uint256 _maxBid
+    ) external payable {
         require(_contract != address(0), "Invalid contract address");
         require(_maxBid > 0, "Max bid must be greater than zero");
-        //TODO Check if there is a way of checking EVM vs WASM contracts.
 
-        userContracts[msg.sender].push(ContractConfig({contractAddress: _contract, maxBid: _maxBid, enabled: true, biddingFunds: msg.value}));
+        ContractConfig[] storage contracts = userContracts[msg.sender];
+        uint256 length = contracts.length;
+        bool found = false;
 
+        for (uint256 i = 0; i < length; i++) {
+            if (contracts[i].contractAddress == _contract) {
+                // If contract already exists, update maxBid and add value to userBalance
+                contracts[i].maxBid = _maxBid;
+                found = true;
+                break;
+            }
+        }
+
+        // If contract does not exist, add it
+        if (!found) {
+            contracts.push(
+                ContractConfig({
+                    contractAddress: _contract,
+                    maxBid: _maxBid,
+                    enabled: true
+                })
+            );
+        }
+
+        userBalances[msg.sender] += msg.value;
         emit ContractAdded(msg.sender, _contract, _maxBid);
     }
-    function getUserContracts(address _user) external view returns (ContractConfig[] memory) {
+    function getUserContracts(
+        address _user
+    ) external view returns (ContractConfig[] memory) {
         return userContracts[_user];
+    }
+    //TODO validate if this info needs to be public
+    function getUserBalance() external view returns (uint256) {
+        return userBalances[msg.sender];
     }
     function removeContract(address _contract) external {
         require(_contract != address(0), "Invalid contract address");
@@ -106,7 +147,13 @@ contract CacheManagerProxy {
         // If not found, add the contract with the sent value as maxBid
         if (!exists) {
             maxBid = msg.value; // Use the sent value as maxBid
-            userContracts[msg.sender].push(ContractConfig({contractAddress: _contract, maxBid: maxBid, enabled: true, biddingFunds: msg.value}));
+            userContracts[msg.sender].push(
+                ContractConfig({
+                    contractAddress: _contract,
+                    maxBid: maxBid,
+                    enabled: true
+                })
+            );
             emit ContractAdded(msg.sender, _contract, maxBid);
         }
         // Check the minimum bid required
@@ -118,6 +165,8 @@ contract CacheManagerProxy {
     }
 
     receive() external payable {}
-    
 
+    //TODO
+    // function to withdraw balance
+    // function to send balance
 }

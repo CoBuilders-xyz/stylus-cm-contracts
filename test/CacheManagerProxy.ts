@@ -11,6 +11,8 @@ import {
 
 dotenv.config();
 
+const logFile = 'cacheManagerProxyTest.log';
+
 describe('CacheManagerProxy', async function () {
   let cmpDeployment: CMPDeployment;
   let dummyContracts: string[];
@@ -33,9 +35,9 @@ describe('CacheManagerProxy', async function () {
   beforeEach(async function () {
     // Deploys a new CMP for clean start. No need to remove contracts between tests.
     cmpDeployment = await deployCMP();
-    // console.log(
-    //   `  ProxyAddress: ${await cmpDeployment.cacheManagerProxy.getAddress()}`
-    // );
+    console.log(
+      `  ProxyAddress: ${await cmpDeployment.cacheManagerProxy.getAddress()}`
+    );
 
     // Evict all contracts from cache for clean start.
     await evictAll();
@@ -49,16 +51,18 @@ describe('CacheManagerProxy', async function () {
     });
   });
 
-  describe('Add/Remove Contracts', function () {
-    it('Should add a contract to CMP', async function () {
+  describe('Insert/ Update / Remove Contracts', function () {
+    it('Should insert a contract to CMP', async function () {
       const contractToCacheAddress = hre.ethers.getAddress(dummyContracts[0]);
       const [user] = await hre.ethers.getSigners();
-      const maxBid = hre.ethers.parseEther('1');
+      const maxBid = hre.ethers.parseEther('0.1');
+      const biddingFunds = hre.ethers.parseEther('1');
 
       await expect(
-        cmpDeployment.cacheManagerProxy.addContract(
+        cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
           contractToCacheAddress,
-          maxBid
+          maxBid,
+          { value: biddingFunds }
         )
       )
         .to.emit(cmpDeployment.cacheManagerProxy, 'ContractAdded')
@@ -66,26 +70,34 @@ describe('CacheManagerProxy', async function () {
 
       const userContracts =
         await cmpDeployment.cacheManagerProxy.getUserContracts(user.address);
-
+      const userBalance =
+        await cmpDeployment.cacheManagerProxy.getUserBalance();
       expect(userContracts.length).to.equal(1);
       expect(userContracts[0].contractAddress).to.equal(contractToCacheAddress);
       expect(userContracts[0].maxBid).to.equal(maxBid);
+      expect(userBalance).to.equal(biddingFunds);
     });
-    it('Should add several contracts to CMP', async function () {
-      const dummyContractsAmount = parseInt(
-        process.env.DUMMY_CONTRACTS_AMOUNT || '0'
-      );
+    it('Should insert several contracts to CMP', async function () {
+      const dummyContractsAmount = dummyContracts.length;
       const [user] = await hre.ethers.getSigners();
-      const maxBid = hre.ethers.parseEther('1');
+      const maxBid = hre.ethers.parseEther('0.1');
       const contractAddresses = [];
+      const biddingFunds = [];
 
       // Add multiple contracts to CMP
       for (let i = 0; i < dummyContractsAmount; i++) {
         const contractAddress = hre.ethers.getAddress(dummyContracts[i]);
         contractAddresses.push(contractAddress);
+        biddingFunds.push(
+          BigInt(Math.floor(Math.random() * Number(maxBid))) + 2n * maxBid
+        );
 
         await expect(
-          cmpDeployment.cacheManagerProxy.addContract(contractAddress, maxBid)
+          cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
+            contractAddress,
+            maxBid,
+            { value: biddingFunds[i] }
+          )
         )
           .to.emit(cmpDeployment.cacheManagerProxy, 'ContractAdded')
           .withArgs(user.address, contractAddress, maxBid);
@@ -95,21 +107,23 @@ describe('CacheManagerProxy', async function () {
       let userContracts =
         await cmpDeployment.cacheManagerProxy.getUserContracts(user.address);
       expect(userContracts.length).to.equal(dummyContractsAmount);
+      const userBalance =
+        await cmpDeployment.cacheManagerProxy.getUserBalance();
 
       // Validate stored contract data
       for (let i = 0; i < dummyContractsAmount; i++) {
         expect(userContracts[i].contractAddress).to.equal(contractAddresses[i]);
         expect(userContracts[i].maxBid).to.equal(maxBid);
       }
+      expect(userBalance).to.equal(biddingFunds.reduce((a, b) => a + b));
     });
-    it('Should add several contracts from diff wallets to CMP', async function () {
-      const dummyContractsAmount = parseInt(
-        process.env.DUMMY_CONTRACTS_AMOUNT || '0'
-      );
+    it('Should insert several contracts from diff wallets to CMP', async function () {
+      const dummyContractsAmount = dummyContracts.length;
       const [mainWallet] = await hre.ethers.getSigners();
-      const maxBid = hre.ethers.parseEther('1');
+      const maxBid = hre.ethers.parseEther('0.1');
       const contractAddresses = [];
       const extraWallets = [];
+      const biddingFunds = [];
 
       // Generate additional wallets
       for (let i = 0; i < dummyContractsAmount; i++) {
@@ -122,7 +136,7 @@ describe('CacheManagerProxy', async function () {
         // Fund the new wallet from the main wallet
         const tx = await mainWallet.sendTransaction({
           to: wallet.address,
-          value: hre.ethers.parseEther('5'), // Send 5 ETH for gas and transactions
+          value: hre.ethers.parseEther('1'), // fund wallet
         });
         await tx.wait();
       }
@@ -131,11 +145,16 @@ describe('CacheManagerProxy', async function () {
       for (let i = 0; i < dummyContractsAmount; i++) {
         const contractAddress = hre.ethers.getAddress(dummyContracts[i]);
         contractAddresses.push(contractAddress);
+        biddingFunds.push(
+          BigInt(Math.floor(Math.random() * Number(maxBid))) + 2n * maxBid
+        );
 
         await expect(
           cmpDeployment.cacheManagerProxy
             .connect(extraWallets[i])
-            .addContract(contractAddress, maxBid)
+            .insertOrUpdateContract(contractAddress, maxBid, {
+              value: biddingFunds[i],
+            })
         )
           .to.emit(cmpDeployment.cacheManagerProxy, 'ContractAdded')
           .withArgs(extraWallets[i].address, contractAddress, maxBid);
@@ -147,18 +166,23 @@ describe('CacheManagerProxy', async function () {
           await cmpDeployment.cacheManagerProxy.getUserContracts(
             extraWallets[i].address
           );
+        const userBalance = await cmpDeployment.cacheManagerProxy
+          .connect(extraWallets[i])
+          .getUserBalance();
+
         expect(userContracts.length).to.equal(1);
         expect(userContracts[0].contractAddress).to.equal(contractAddresses[i]);
         expect(userContracts[0].maxBid).to.equal(maxBid);
+        expect(userBalance).to.equal(biddingFunds[i]);
       }
     });
     it('Should remove a contract from CMP', async function () {
       const contractToCacheAddress = hre.ethers.getAddress(dummyContracts[0]);
       const [user] = await hre.ethers.getSigners();
-      const maxBid = hre.ethers.parseEther('1');
+      const maxBid = hre.ethers.parseEther('0.1');
 
       // Add contract first
-      await cmpDeployment.cacheManagerProxy.addContract(
+      await cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
         contractToCacheAddress,
         maxBid
       );
@@ -182,11 +206,9 @@ describe('CacheManagerProxy', async function () {
       expect(userContracts.length).to.equal(0);
     });
     it('Should remove all contracts from CMP', async function () {
-      const dummyContractsAmount = parseInt(
-        process.env.DUMMY_CONTRACTS_AMOUNT || '0'
-      );
+      const dummyContractsAmount = dummyContracts.length;
       const [user] = await hre.ethers.getSigners();
-      const maxBid = hre.ethers.parseEther('1');
+      const maxBid = hre.ethers.parseEther('0.1');
       const contractAddresses = [];
 
       // Add multiple contracts to CMP
@@ -195,7 +217,10 @@ describe('CacheManagerProxy', async function () {
         contractAddresses.push(contractAddress);
 
         await expect(
-          cmpDeployment.cacheManagerProxy.addContract(contractAddress, maxBid)
+          cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
+            contractAddress,
+            maxBid
+          )
         )
           .to.emit(cmpDeployment.cacheManagerProxy, 'ContractAdded')
           .withArgs(user.address, contractAddress, maxBid);
@@ -222,11 +247,9 @@ describe('CacheManagerProxy', async function () {
       expect(userContracts.length).to.equal(0);
     });
     it('Should remove some contracts from diff wallets while others remain', async function () {
-      const dummyContractsAmount = parseInt(
-        process.env.DUMMY_CONTRACTS_AMOUNT || '0'
-      );
+      const dummyContractsAmount = dummyContracts.length;
       const [mainWallet] = await hre.ethers.getSigners();
-      const maxBid = hre.ethers.parseEther('1');
+      const maxBid = hre.ethers.parseEther('0.1');
       const contractAddresses = [];
       const extraWallets = [];
 
@@ -254,7 +277,7 @@ describe('CacheManagerProxy', async function () {
         await expect(
           cmpDeployment.cacheManagerProxy
             .connect(extraWallets[i])
-            .addContract(contractAddress, maxBid)
+            .insertOrUpdateContract(contractAddress, maxBid)
         )
           .to.emit(cmpDeployment.cacheManagerProxy, 'ContractAdded')
           .withArgs(extraWallets[i].address, contractAddress, maxBid);
@@ -295,13 +318,13 @@ describe('CacheManagerProxy', async function () {
       }
     });
     it('Should add and remove contracts from diff wallets in random order', async function () {
-      const dummyContractsAmount = parseInt(
-        process.env.DUMMY_CONTRACTS_AMOUNT || '0'
-      );
+      const dummyContractsAmount = dummyContracts.length;
+
       const [mainWallet] = await hre.ethers.getSigners();
-      const maxBid = hre.ethers.parseEther('1');
+      const maxBid = hre.ethers.parseEther('0.1');
       const contractAddresses = [];
       const extraWallets = [];
+      const biddingFunds = [];
 
       // Generate additional wallets
       for (let i = 0; i < dummyContractsAmount; i++) {
@@ -314,7 +337,7 @@ describe('CacheManagerProxy', async function () {
         // Fund the new wallet from the main wallet
         const tx = await mainWallet.sendTransaction({
           to: wallet.address,
-          value: hre.ethers.parseEther('5'), // Send 5 ETH for gas and transactions
+          value: hre.ethers.parseEther('1'), // Send 5 ETH for gas and transactions
         });
         await tx.wait();
       }
@@ -328,11 +351,15 @@ describe('CacheManagerProxy', async function () {
       for (const i of shuffledIndexes) {
         const contractAddress = hre.ethers.getAddress(dummyContracts[i]);
         contractAddresses[i] = contractAddress;
+        biddingFunds[i] =
+          BigInt(Math.floor(Math.random() * Number(maxBid))) + 2n * maxBid;
 
         await expect(
           cmpDeployment.cacheManagerProxy
             .connect(extraWallets[i])
-            .addContract(contractAddress, maxBid)
+            .insertOrUpdateContract(contractAddress, maxBid, {
+              value: biddingFunds[i],
+            })
         )
           .to.emit(cmpDeployment.cacheManagerProxy, 'ContractAdded')
           .withArgs(extraWallets[i].address, contractAddress, maxBid);
@@ -362,12 +389,20 @@ describe('CacheManagerProxy', async function () {
           );
         expect(userContracts.length).to.equal(0);
       }
+
+      // Validate all users have their unused funds
+      for (let i = 0; i < dummyContractsAmount; i++) {
+        const userBalance = await cmpDeployment.cacheManagerProxy
+          .connect(extraWallets[i])
+          .getUserBalance();
+        expect(userBalance).to.equal(biddingFunds[i]);
+      }
     });
   });
 
   // Just for testing. Place bid function wont be available for the public.
   describe('Placing Bids From Proxy', function () {
-    it('Should add a contract to CMP and place a bid', async function () {
+    it('Should insert a contract to CMP and place a bid', async function () {
       const contractToCacheAddress = hre.ethers.getAddress(dummyContracts[0]);
       const [user] = await hre.ethers.getSigners();
       const bidAmount = hre.ethers.parseEther('1');
