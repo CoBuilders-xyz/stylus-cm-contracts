@@ -9,6 +9,10 @@ interface ICacheManager {
     function placeBid(address program) external payable;
 }
 
+interface IArbWasmCache {
+    function codehashIsCached(bytes32 codehash) external view returns (bool);
+}
+
 contract CacheManagerProxy {
     using EnumerableSet for EnumerableSet.AddressSet;
 
@@ -16,6 +20,7 @@ contract CacheManagerProxy {
     struct ContractConfig {
         address contractAddress;
         uint256 maxBid;
+        uint256 lastBid; // Track the last successful bid
         bool enabled;
     }
     struct UserConfig {
@@ -23,6 +28,7 @@ contract CacheManagerProxy {
         uint256 balance;
     }
     ICacheManager public immutable cacheManager;
+    IArbWasmCache public immutable arbWasmCache;
     address public owner;
 
     mapping(address => UserConfig) public userConfig;
@@ -62,9 +68,10 @@ contract CacheManagerProxy {
     }
 
     // Methods
-    constructor(address _cacheManager) {
+    constructor(address _cacheManager, address _arbWasmCache) {
         require(_cacheManager != address(0), "Invalid CacheManager address");
         cacheManager = ICacheManager(_cacheManager);
+        arbWasmCache = IArbWasmCache(_arbWasmCache);
         owner = msg.sender;
     }
 
@@ -94,6 +101,7 @@ contract CacheManagerProxy {
                 ContractConfig({
                     contractAddress: _contract,
                     maxBid: _maxBid,
+                    lastBid: type(uint256).max,
                     enabled: true
                 })
             );
@@ -156,30 +164,140 @@ contract CacheManagerProxy {
         address _user,
         address _contract,
         uint256 _bid
-    ) internal {
+    ) internal returns (bool) {
         uint192 minBid = cacheManager.getMinBid(_contract);
         require(_bid >= minBid, "Insufficient bid amount");
 
-        // Get initial gas left
+        // Check balance before attempting bid to prevent unnecessary gas consumption
+        uint256 maxPossibleGas = 100000; // Set a reasonable gas limit estimate
+        uint256 maxGasCost = maxPossibleGas * tx.gasprice;
+        require(
+            userConfig[_user].balance >= _bid + maxGasCost,
+            "Insufficient balance for bid and potential gas"
+        );
+
         uint256 initialGas = gasleft();
 
-        // Place the bid
-        cacheManager.placeBid{value: _bid}(_contract);
+        try cacheManager.placeBid{value: _bid}(_contract) {
+            // Bid successful - calculate actual gas used
+            uint256 gasUsed = initialGas - gasleft();
+            uint256 actualGasCost = gasUsed * tx.gasprice;
 
-        // Estimate gas used
-        uint256 gasUsed = initialGas - gasleft();
-        uint256 gasCost = gasUsed * tx.gasprice; // Calculate gas cost
+            // Deduct bid amount and actual gas cost
+            userConfig[_user].balance -= (_bid + actualGasCost);
 
-        // Deduct total spent (bid + gas cost) from user balance
-        uint256 totalCost = _bid + gasCost;
-        require(
-            userConfig[_user].balance >= totalCost,
-            "Insufficient balance for fees"
+            // Update lastBid when successful
+            for (uint256 i = 0; i < userConfig[_user].contracts.length; i++) {
+                if (
+                    userConfig[_user].contracts[i].contractAddress == _contract
+                ) {
+                    userConfig[_user].contracts[i].lastBid = _bid;
+                    break;
+                }
+            }
+
+            emit BidPlaced(_user, _contract, _bid);
+            return true;
+        } catch {
+            // If bid fails (e.g., "Already Cached"):
+            // 1. The bid amount is automatically returned (due to revert)
+            // 2. We still need to charge for gas used up to the revert
+            uint256 gasUsed = initialGas - gasleft();
+            uint256 actualGasCost = gasUsed * tx.gasprice;
+
+            // Only deduct the gas cost for the failed attempt
+            userConfig[_user].balance -= actualGasCost;
+            return false;
+        }
+    }
+
+    function checkUpkeep(
+        bytes calldata /* checkData */
+    ) external view returns (bool upkeepNeeded, bytes memory performData) {
+        address[] memory users = userAddresses.values();
+        uint256 totalContracts = 0;
+
+        for (uint256 u = 0; u < users.length; u++) {
+            address user = users[u];
+            ContractConfig[] memory contracts = userConfig[user].contracts;
+            for (uint256 i = 0; i < contracts.length; i++) {
+                if (!contracts[i].enabled) continue;
+
+                address contractAddress = contracts[i].contractAddress;
+                uint256 maxBid = contracts[i].maxBid;
+                uint192 minBid = cacheManager.getMinBid(contractAddress);
+
+                // Check minBid < maxBid first as it's cheaper than checking cache status
+                if (minBid < maxBid) {
+                    // Only check cache status if bid amount is acceptable
+                    if (
+                        !arbWasmCache.codehashIsCached(
+                            contractAddress.codehash
+                        ) && minBid < contracts[i].lastBid
+                    ) {
+                        upkeepNeeded = true;
+                        totalContracts++;
+                    }
+                }
+            }
+        }
+
+        performData = abi.encode(users, totalContracts);
+    }
+
+    function performUpkeep(bytes calldata performData) external {
+        (address[] memory users, uint256 totalContracts) = abi.decode(
+            performData,
+            (address[], uint256)
         );
-        userConfig[_user].balance -= totalCost;
 
-        emit BidPlaced(_user, _contract, _bid);
+        uint256 totalBids = 0;
+        for (uint256 u = 0; u < users.length; u++) {
+            address user = users[u];
+            ContractConfig[] storage contracts = userConfig[user].contracts;
+            for (uint256 i = 0; i < contracts.length; i++) {
+                if (!contracts[i].enabled) continue;
+
+                address contractAddress = contracts[i].contractAddress;
+                uint256 maxBid = contracts[i].maxBid;
+                uint192 minBid = cacheManager.getMinBid(contractAddress);
+
+                // Check minBid < maxBid first as it's cheaper than checking cache status
+                if (minBid < maxBid) {
+                    // Only check cache status if bid amount is acceptable
+                    if (
+                        !arbWasmCache.codehashIsCached(
+                            contractAddress.codehash
+                        ) && minBid < contracts[i].lastBid
+                    ) {
+                        bool bidSuccess = placeUserBid(
+                            user,
+                            contractAddress,
+                            minBid
+                        );
+                        if (bidSuccess) {
+                            totalBids++;
+                            if (totalBids >= totalContracts) {
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     receive() external payable {}
+
+    // function to withdraw balance
+    function withdrawBalance() external {
+        require(userConfig[msg.sender].balance > 0, "No balance to withdraw");
+        payable(msg.sender).transfer(userConfig[msg.sender].balance);
+        userConfig[msg.sender].balance = 0;
+    }
+    // function to fund user's own balance
+    function fundBalance() external payable {
+        require(msg.value > 0, "Amount must be greater than zero");
+        userConfig[msg.sender].balance += msg.value;
+    }
 }

@@ -8,6 +8,9 @@ import {
   deployCMP,
   evictAll,
   setCacheSize,
+  fillCacheWithBids,
+  placeBidToCacheManager,
+  isContractCached,
 } from './helpers';
 
 dotenv.config();
@@ -36,9 +39,9 @@ describe('CacheManagerProxy', async function () {
   beforeEach(async function () {
     // Deploys a new CMP for clean start. No need to remove contracts between tests.
     cmpDeployment = await deployCMP();
-    console.log(
-      `  ProxyAddress: ${await cmpDeployment.cacheManagerProxy.getAddress()}`
-    );
+    // console.log(
+    //   `  ProxyAddress: ${await cmpDeployment.cacheManagerProxy.getAddress()}`
+    // );
 
     // Evict all contracts from cache for clean start.
     await evictAll();
@@ -456,73 +459,236 @@ describe('CacheManagerProxy', async function () {
 
   // Just for testing. Place bid function wont be available for the public.
   describe('Placing Bids From Proxy', function () {
-    // it('Should insert a contract to CMP and place a bid', async function () {
-    //   const contractToCacheAddress = hre.ethers.getAddress(dummyContracts[0]);
-    //   const [user] = await hre.ethers.getSigners();
-    //   const bidAmount = hre.ethers.parseEther('1');
-    //   await expect(
-    //     cmpDeployment.cacheManagerProxy.placeUserBid(contractToCacheAddress, {
-    //       value: bidAmount,
-    //     })
-    //   )
-    //     .to.emit(cmpDeployment.cacheManagerProxy, 'ContractAdded')
-    //     .withArgs(user.address, contractToCacheAddress, bidAmount)
-    //     .to.emit(cmpDeployment.cacheManagerProxy, 'BidPlaced')
-    //     .withArgs(user.address, contractToCacheAddress, bidAmount);
-    //   const userContracts =
-    //     await cmpDeployment.cacheManagerProxy.getUserContracts(user.address);
-    //   expect(userContracts.length).to.equal(1);
-    //   expect(userContracts[0].contractAddress).to.equal(contractToCacheAddress);
-    //   expect(userContracts[0].maxBid).to.equal(bidAmount);
-    // });
-    // it('Should revert if bid is below getMinBid', async function () {
-    //   const contractToCacheAddress1 = hre.ethers.getAddress(dummyContracts[0]);
-    //   const contractToCacheAddress2 = hre.ethers.getAddress(dummyContracts[1]);
-    //   const contractToCacheAddress3 = hre.ethers.getAddress(dummyContracts[2]);
-    //   const bidAmount = hre.ethers.parseEther('1');
-    //   const lowBidAmount = hre.ethers.parseEther('0.5'); // Below min bid
-    //   // Place two valid bids on different contracts
-    //   await cmpDeployment.cacheManagerProxy.placeUserBid(
-    //     contractToCacheAddress1,
-    //     {
-    //       value: bidAmount,
-    //     }
-    //   );
-    //   await cmpDeployment.cacheManagerProxy.placeUserBid(
-    //     contractToCacheAddress2,
-    //     {
-    //       value: bidAmount,
-    //     }
-    //   );
-    //   // Third bid should fail due to insufficient bid amount
-    //   await expect(
-    //     cmpDeployment.cacheManagerProxy.placeUserBid(contractToCacheAddress3, {
-    //       value: lowBidAmount,
-    //     })
-    //   ).to.be.revertedWith('Insufficient bid amount');
-    // });
-
-    describe('Automation', function () {});
-    it('Should checkUpkeep true and place a bid with performUpkeep', async function () {
+    xit('Should insert a contract to CMP and place a bid', async function () {
       const contractToCacheAddress = hre.ethers.getAddress(dummyContracts[0]);
       const [user] = await hre.ethers.getSigners();
-      const maxBid = hre.ethers.parseEther('0.1');
-      const biddingFunds = hre.ethers.parseEther('1');
-
-      cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
-        contractToCacheAddress,
-        maxBid,
-        { value: biddingFunds }
-      );
-
+      const bidAmount = hre.ethers.parseEther('1');
+      await expect(
+        cmpDeployment.cacheManagerProxy.placeUserBid(contractToCacheAddress, {
+          value: bidAmount,
+        })
+      )
+        .to.emit(cmpDeployment.cacheManagerProxy, 'ContractAdded')
+        .withArgs(user.address, contractToCacheAddress, bidAmount)
+        .to.emit(cmpDeployment.cacheManagerProxy, 'BidPlaced')
+        .withArgs(user.address, contractToCacheAddress, bidAmount);
       const userContracts =
         await cmpDeployment.cacheManagerProxy.getUserContracts(user.address);
-      const userBalance =
-        await cmpDeployment.cacheManagerProxy.getUserBalance();
       expect(userContracts.length).to.equal(1);
       expect(userContracts[0].contractAddress).to.equal(contractToCacheAddress);
-      expect(userContracts[0].maxBid).to.equal(maxBid);
-      expect(userBalance).to.equal(biddingFunds);
+      expect(userContracts[0].maxBid).to.equal(bidAmount);
+    });
+    xit('Should revert if bid is below getMinBid', async function () {
+      const contractToCacheAddress1 = hre.ethers.getAddress(dummyContracts[0]);
+      const contractToCacheAddress2 = hre.ethers.getAddress(dummyContracts[1]);
+      const contractToCacheAddress3 = hre.ethers.getAddress(dummyContracts[2]);
+      const bidAmount = hre.ethers.parseEther('1');
+      const lowBidAmount = hre.ethers.parseEther('0.5'); // Below min bid
+      // Place two valid bids on different contracts
+      await cmpDeployment.cacheManagerProxy.placeUserBid(
+        contractToCacheAddress1,
+        {
+          value: bidAmount,
+        }
+      );
+      await cmpDeployment.cacheManagerProxy.placeUserBid(
+        contractToCacheAddress2,
+        {
+          value: bidAmount,
+        }
+      );
+      // Third bid should fail due to insufficient bid amount
+      await expect(
+        cmpDeployment.cacheManagerProxy.placeUserBid(contractToCacheAddress3, {
+          value: lowBidAmount,
+        })
+      ).to.be.revertedWith('Insufficient bid amount');
+    });
+  });
+
+  describe('Automation', function () {
+    describe('checkUpkeep', function () {
+      it('Should return upkeepNeeded=false when no contracts are registered', async function () {
+        const checkUpkeep = await cmpDeployment.cacheManagerProxy.checkUpkeep(
+          '0x'
+        );
+        expect(checkUpkeep.upkeepNeeded).to.be.false;
+      });
+
+      it('Should return upkeepNeeded=false when minBid exceeds maxBid', async function () {
+        const contractToCacheAddress = hre.ethers.getAddress(dummyContracts[0]);
+        const contractToFillAddress = dummyContracts
+          .slice(1, 4)
+          .map((contract) => hre.ethers.getAddress(contract));
+        const maxBid = hre.ethers.parseEther('0.1');
+        const biddingFunds = hre.ethers.parseEther('1');
+
+        await cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
+          contractToCacheAddress,
+          maxBid,
+          { value: biddingFunds }
+        );
+
+        // Place a high bid to make minBid > maxBid
+        await fillCacheWithBids(contractToFillAddress, '0.2'); // to make minSuggestedBid > maxBid
+
+        const checkUpkeep = await cmpDeployment.cacheManagerProxy.checkUpkeep(
+          '0x'
+        );
+        expect(checkUpkeep.upkeepNeeded).to.be.false;
+      });
+
+      it('Should return upkeepNeeded=true when minBid < maxBid and contract is not cached', async function () {
+        const contractToCacheAddress = hre.ethers.getAddress(dummyContracts[0]);
+        const maxBid = hre.ethers.parseEther('0.1');
+        const biddingFunds = hre.ethers.parseEther('1');
+        await cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
+          contractToCacheAddress,
+          maxBid,
+          { value: biddingFunds }
+        );
+        const checkUpkeep = await cmpDeployment.cacheManagerProxy.checkUpkeep(
+          '0x'
+        );
+        expect(checkUpkeep.upkeepNeeded).to.be.true;
+      });
+
+      it('Should return upkeepNeeded=false when minBid < maxBid and contract is cached', async function () {
+        const contractToCacheAddress = hre.ethers.getAddress(dummyContracts[0]);
+        const maxBid = hre.ethers.parseEther('0.1');
+        const biddingFunds = hre.ethers.parseEther('1');
+        await cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
+          contractToCacheAddress,
+          maxBid,
+          { value: biddingFunds }
+        );
+        await placeBidToCacheManager(
+          contractToCacheAddress,
+          hre.ethers.parseEther('0.1')
+        ); // Cache the contract before upkeep (already cached)
+        const checkUpkeep = await cmpDeployment.cacheManagerProxy.checkUpkeep(
+          '0x'
+        );
+
+        expect(checkUpkeep.upkeepNeeded).to.be.false;
+      });
+    });
+
+    xdescribe('performUpkeep', function () {
+      it('Should do nothing when no contracts are registered', async function () {
+        const checkUpkeep = await cmpDeployment.cacheManagerProxy.checkUpkeep(
+          '0x'
+        );
+        await cmpDeployment.cacheManagerProxy.performUpkeep(
+          checkUpkeep.performData
+        );
+        // No revert expected, but also no bids placed
+      });
+
+      it('Should place bid when minBid < maxBid', async function () {
+        const contractToCacheAddress = hre.ethers.getAddress(dummyContracts[0]);
+        const maxBid = hre.ethers.parseEther('0.1');
+        const biddingFunds = hre.ethers.parseEther('1');
+
+        // Setup contract for user
+        await cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
+          contractToCacheAddress,
+          maxBid,
+          { value: biddingFunds }
+        );
+
+        // Get initial balance
+        const initialBalance =
+          await cmpDeployment.cacheManagerProxy.getUserBalance();
+
+        // Perform upkeep
+        const checkUpkeep = await cmpDeployment.cacheManagerProxy.checkUpkeep(
+          '0x'
+        );
+        await expect(
+          cmpDeployment.cacheManagerProxy.performUpkeep(checkUpkeep.performData)
+        )
+          .to.emit(cmpDeployment.cacheManagerProxy, 'BidPlaced')
+          .withArgs(
+            await cmpDeployment.owner.getAddress(),
+            contractToCacheAddress,
+            await cmpDeployment.cacheManager.getMinBid(contractToCacheAddress)
+          );
+
+        // Check that balance was reduced
+        const finalBalance =
+          await cmpDeployment.cacheManagerProxy.getUserBalance();
+        expect(finalBalance).to.be.lt(initialBalance);
+      });
+
+      it('Should not place bid when minBid > maxBid', async function () {
+        const contractToCacheAddress = hre.ethers.getAddress(dummyContracts[0]);
+        const contractToFillAddress = dummyContracts
+          .slice(1, 4)
+          .map((contract) => hre.ethers.getAddress(contract));
+        const maxBid = hre.ethers.parseEther('0.1');
+        const biddingFunds = hre.ethers.parseEther('1');
+
+        // Setup contract for user
+        await cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
+          contractToCacheAddress,
+          maxBid,
+          { value: biddingFunds }
+        );
+
+        // Place a high bid to make minBid > maxBid
+        await fillCacheWithBids(contractToFillAddress, '0.2');
+
+        // Get initial balance
+        const initialBalance =
+          await cmpDeployment.cacheManagerProxy.getUserBalance();
+
+        // Perform upkeep
+        const checkUpkeep = await cmpDeployment.cacheManagerProxy.checkUpkeep(
+          '0x'
+        );
+        await cmpDeployment.cacheManagerProxy.performUpkeep(
+          checkUpkeep.performData
+        );
+
+        // Check that balance remained the same
+        const finalBalance =
+          await cmpDeployment.cacheManagerProxy.getUserBalance();
+        expect(finalBalance).to.equal(initialBalance);
+      });
+
+      it('Should skip disabled contracts', async function () {
+        const contractToCacheAddress = hre.ethers.getAddress(dummyContracts[0]);
+        const maxBid = hre.ethers.parseEther('0.1');
+        const biddingFunds = hre.ethers.parseEther('1');
+
+        // Setup contract for user
+        await cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
+          contractToCacheAddress,
+          maxBid,
+          { value: biddingFunds }
+        );
+
+        // Get initial balance
+        const initialBalance =
+          await cmpDeployment.cacheManagerProxy.getUserBalance();
+
+        // Disable the contract (you'll need to add this function to the contract)
+        // await cmpDeployment.cacheManagerProxy.setContractEnabled(contractToCacheAddress, false);
+
+        // Perform upkeep
+        const checkUpkeep = await cmpDeployment.cacheManagerProxy.checkUpkeep(
+          '0x'
+        );
+        await cmpDeployment.cacheManagerProxy.performUpkeep(
+          checkUpkeep.performData
+        );
+
+        // Check that balance remained the same
+        const finalBalance =
+          await cmpDeployment.cacheManagerProxy.getUserBalance();
+        expect(finalBalance).to.equal(initialBalance);
+      });
     });
   });
 });

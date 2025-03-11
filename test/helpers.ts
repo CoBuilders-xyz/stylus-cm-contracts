@@ -8,6 +8,7 @@ dotenv.config();
 const execPromise = util.promisify(exec);
 
 import cacheManagerABIJson from '../src/abis/cacheManagerABI.json';
+import arbWasmCacheABIJson from '../src/abis/arbWasmCacheABI.json';
 import type { CacheManagerProxy } from '../typechain-types';
 
 export interface CMPDeployment {
@@ -27,11 +28,17 @@ export async function deployCMP(): Promise<CMPDeployment> {
   const cacheManagerAddress = hre.ethers.getAddress(
     process.env.CACHE_MANAGER_ADDRESS || '0x'
   );
+  const arbWasmCacheAddress = hre.ethers.getAddress(
+    process.env.ARB_WASM_CACHE_ADDRESS || '0x'
+  );
 
   const CacheManagerProxy = await hre.ethers.getContractFactory(
     'CacheManagerProxy'
   );
-  const cacheManagerProxy = await CacheManagerProxy.deploy(cacheManagerAddress);
+  const cacheManagerProxy = await CacheManagerProxy.deploy(
+    cacheManagerAddress,
+    arbWasmCacheAddress
+  );
   return { cacheManagerProxy, cacheManagerAddress, owner };
 }
 
@@ -114,4 +121,120 @@ export async function setCacheSize() {
     l2Owner
   );
   await cacheManagerContract.setCacheSize(cacheSize);
+}
+
+/**
+ * Fills the cache with bids of specified amount.
+ *
+ * @param contracts Array of contract addresses to cache
+ * @param bidAmount Amount in ETH to bid for each contract (defaults to 0.1)
+ */
+export async function fillCacheWithBids(
+  contracts: string[],
+  bidAmount: string = '0.1'
+) {
+  const cacheManagerAddress = hre.ethers.getAddress(
+    process.env.CACHE_MANAGER_ADDRESS || '0x'
+  );
+  const signer = await hre.ethers.getSigner(
+    process.env.ARBLOC_OWNER_ADD || '0x'
+  );
+
+  const cacheManager = new hre.ethers.Contract(
+    cacheManagerAddress,
+    cacheManagerABIJson.abi,
+    signer
+  );
+
+  const bid = hre.ethers.parseEther(bidAmount);
+
+  for (const contractAddress of contracts) {
+    try {
+      await cacheManager.placeBid(contractAddress, { value: bid });
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('AlreadyCached')) {
+        console.log(`Contract ${contractAddress} is already cached`);
+      } else {
+        break; // Stop the loop since cache is full.
+      }
+    }
+  }
+}
+
+/**
+ * Places a bid to the cache manager.
+ *
+ * @param contractAddress Address of the contract to bid on
+ * @param bidAmount Amount in ETH to bid for the contract
+ */
+export async function placeBidToCacheManager(
+  contractAddress: string,
+  bidAmount: bigint
+) {
+  const cacheManagerAddress = hre.ethers.getAddress(
+    process.env.CACHE_MANAGER_ADDRESS || '0x'
+  );
+  const signer = await hre.ethers.getSigner(
+    process.env.ARBLOC_OWNER_ADD || '0x'
+  );
+  const cacheManager = new hre.ethers.Contract(
+    cacheManagerAddress,
+    cacheManagerABIJson.abi,
+    signer
+  );
+  await cacheManager.placeBid(contractAddress, { value: bidAmount });
+}
+
+/**
+ * Gets a CacheManager contract instance connected to the signer
+ *
+ * @returns Contract instance of CacheManager
+ */
+export async function getCacheManager() {
+  const cacheManagerAddress = hre.ethers.getAddress(
+    process.env.CACHE_MANAGER_ADDRESS || '0x'
+  );
+  const signer = await hre.ethers.getSigner(
+    process.env.ARBLOC_OWNER_ADD || '0x'
+  );
+
+  return new hre.ethers.Contract(
+    cacheManagerAddress,
+    cacheManagerABIJson.abi,
+    signer
+  );
+}
+
+/**
+ * Gets an ArbWasmCache contract instance connected to the signer
+ *
+ * @returns Contract instance of ArbWasmCache
+ */
+export async function getArbWasmCache() {
+  const arbWasmCacheAddress = hre.ethers.getAddress(
+    process.env.ARB_WASM_CACHE_ADDRESS || '0x'
+  );
+  const signer = await hre.ethers.getSigner(
+    process.env.ARBLOC_OWNER_ADD || '0x'
+  );
+
+  return new hre.ethers.Contract(
+    arbWasmCacheAddress,
+    arbWasmCacheABIJson.abi,
+    signer
+  );
+}
+
+/**
+ * Checks if a contract is cached in the ArbWasmCache.
+ *
+ * @param contractAddress Address of the contract to check
+ * @returns True if the contract is cached, false otherwise
+ */
+export async function isContractCached(contractAddress: string) {
+  const contractCodeHash = hre.ethers.keccak256(
+    await hre.ethers.provider.getCode(contractAddress)
+  );
+  const arbWasmCache = await getArbWasmCache();
+  return await arbWasmCache.codehashIsCached(contractCodeHash);
 }
