@@ -1,7 +1,9 @@
 import { expect } from 'chai';
 import hre from 'hardhat';
-import { Wallet } from 'ethers';
+import { Wallet, JsonRpcProvider } from 'ethers';
 import dotenv from 'dotenv';
+import { v4 as uuidv4 } from 'uuid';
+
 import {
   CMPDeployment,
   deployDummyWASMContracts,
@@ -13,6 +15,7 @@ import {
   placeBidToCacheManager,
   isContractCached,
 } from './helpers';
+import { CacheManagerMonitor } from './scripts/monitor';
 
 dotenv.config();
 
@@ -21,6 +24,7 @@ const logFile = 'cacheManagerProxyTest.log';
 describe('CacheManagerProxy', async function () {
   let cmpDeployment: CMPDeployment;
   let dummyContracts: string[];
+  let monitor: CacheManagerMonitor;
   before(async function () {
     console.log('');
     console.log('Setup');
@@ -34,18 +38,36 @@ describe('CacheManagerProxy', async function () {
     dummyContracts = await deployDummyWASMContracts();
     console.log('Dummy WASM Contracts:');
     console.log(dummyContracts.join('\n'));
+
+    monitor = new CacheManagerMonitor(
+      '0x0000000000000000000000000000000000000000',
+      new JsonRpcProvider(process.env.RPC_URL),
+      uuidv4()
+    );
+    await monitor.startMonitoring();
     console.log('---------------------------------------');
   });
 
   beforeEach(async function () {
     // Deploys a new CMP for clean start. No need to remove contracts between tests.
     cmpDeployment = await deployCMP();
-    console.log(
-      `  ProxyAddress: ${await cmpDeployment.cacheManagerProxy.getAddress()}`
-    );
+    // console.log(
+    //   `  ProxyAddress: ${await cmpDeployment.cacheManagerProxy.getAddress()}`
+    // );
 
     // Evict all contracts from cache for clean start.
     await evictAll();
+
+    // Update monitor with new CMP address
+    const newTestId = uuidv4();
+    await monitor.setTestId(newTestId);
+    await monitor.setContractAddress(
+      await cmpDeployment.cacheManagerProxy.getAddress()
+    );
+  });
+
+  afterEach(async () => {
+    await monitor.stopMonitoring();
   });
 
   describe('Deployment', async function () {
@@ -459,7 +481,7 @@ describe('CacheManagerProxy', async function () {
   });
 
   // Just for testing. Place bid function wont be available for the public.
-  xdescribe('Placing Bids From Proxy', function () {
+  describe('Placing Bids From Proxy', function () {
     it('Should fund the proxy and place a bid', async function () {
       const contractToCacheAddress = hre.ethers.getAddress(dummyContracts[0]);
       const [user] = await hre.ethers.getSigners();
@@ -470,19 +492,6 @@ describe('CacheManagerProxy', async function () {
         value: fundingAmount,
       });
 
-      const userAmountBefore = await hre.ethers.provider.getBalance(
-        await user.getAddress()
-      );
-      console.log(
-        `User balance: ${hre.ethers.formatEther(userAmountBefore)} ETH`
-      );
-      const contractBalance = await hre.ethers.provider.getBalance(
-        await cmpDeployment.cacheManagerProxy.getAddress()
-      );
-      console.log(
-        `Contract balance: ${hre.ethers.formatEther(contractBalance)} ETH`
-      );
-
       await expect(
         cmpDeployment.cacheManagerProxy.placeBidExternal(
           contractToCacheAddress,
@@ -491,71 +500,6 @@ describe('CacheManagerProxy', async function () {
       )
         .to.emit(cmpDeployment.cacheManagerProxy, 'BidPlaced')
         .withArgs(user.address, contractToCacheAddress, bidAmount);
-
-      const userAmountAfter = await hre.ethers.provider.getBalance(
-        await user.getAddress()
-      );
-      console.log(
-        `User balance after: ${hre.ethers.formatEther(userAmountAfter)} ETH`
-      );
-      const contractBalanceAfter = await hre.ethers.provider.getBalance(
-        await cmpDeployment.cacheManagerProxy.getAddress()
-      );
-      console.log(
-        `Contract balance: ${hre.ethers.formatEther(contractBalanceAfter)} ETH`
-      );
-    });
-
-    it('Should insert a contract to CMP and place a bid', async function () {
-      const contractToCacheAddress = hre.ethers.getAddress(dummyContracts[0]);
-      const [user] = await hre.ethers.getSigners();
-      const bidAmount = hre.ethers.parseEther('1');
-      await expect(
-        cmpDeployment.cacheManagerProxy.placeUserBid_TEST(
-          contractToCacheAddress,
-          {
-            value: bidAmount,
-          }
-        )
-      )
-        .to.emit(cmpDeployment.cacheManagerProxy, 'ContractAdded')
-        .withArgs(user.address, contractToCacheAddress, bidAmount)
-        .to.emit(cmpDeployment.cacheManagerProxy, 'BidPlaced')
-        .withArgs(user.address, contractToCacheAddress, bidAmount);
-      const userContracts =
-        await cmpDeployment.cacheManagerProxy.getUserContracts(user.address);
-      expect(userContracts.length).to.equal(1);
-      expect(userContracts[0].contractAddress).to.equal(contractToCacheAddress);
-      expect(userContracts[0].maxBid).to.equal(bidAmount);
-    });
-    it('Should revert if bid is below getMinBid', async function () {
-      const contractToCacheAddress1 = hre.ethers.getAddress(dummyContracts[0]);
-      const contractToCacheAddress2 = hre.ethers.getAddress(dummyContracts[1]);
-      const contractToCacheAddress3 = hre.ethers.getAddress(dummyContracts[2]);
-      const bidAmount = hre.ethers.parseEther('1');
-      const lowBidAmount = hre.ethers.parseEther('0.5'); // Below min bid
-      // Place two valid bids on different contracts
-      await cmpDeployment.cacheManagerProxy.placeUserBid_TEST(
-        contractToCacheAddress1,
-        {
-          value: bidAmount,
-        }
-      );
-      await cmpDeployment.cacheManagerProxy.placeUserBid_TEST(
-        contractToCacheAddress2,
-        {
-          value: bidAmount,
-        }
-      );
-      // Third bid should fail due to insufficient bid amount
-      await expect(
-        cmpDeployment.cacheManagerProxy.placeUserBid_TEST(
-          contractToCacheAddress3,
-          {
-            value: lowBidAmount,
-          }
-        )
-      ).to.be.revertedWith('Insufficient bid amount');
     });
   });
 
@@ -640,6 +584,7 @@ describe('CacheManagerProxy', async function () {
 
       it('Should place bid when minBid < maxBid and contract is not cached', async function () {
         const contractToCacheAddress = hre.ethers.getAddress(dummyContracts[0]);
+        const [user] = await hre.ethers.getSigners();
         const contractToFillAddress = dummyContracts.slice(1, 4);
         const maxBid = hre.ethers.parseEther('0.3');
         const biddingFunds = hre.ethers.parseEther('1');
@@ -667,15 +612,13 @@ describe('CacheManagerProxy', async function () {
           cmpDeployment.cacheManagerProxy.performUpkeep(checkUpkeep.performData)
         )
           .to.emit(cmpDeployment.cacheManagerProxy, 'BidPlaced')
-          .withArgs(contractToCacheAddress, minBid);
+          .withArgs(user.address, contractToCacheAddress, minBid);
 
         // Check final state
         const finalBalance =
           await cmpDeployment.cacheManagerProxy.getUserBalance();
-        console.log('Final balance:', finalBalance.toString());
 
         const isCachedAfter = await isContractCached(contractToCacheAddress);
-        console.log('Is cached after:', isCachedAfter);
 
         // Remove event listener
 

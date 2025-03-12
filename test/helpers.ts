@@ -1,7 +1,7 @@
 import { exec } from 'child_process';
 import util from 'util';
 import hre from 'hardhat';
-import { Signer } from 'ethers';
+import { Signer, Provider } from 'ethers';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -15,6 +15,7 @@ export interface CMPDeployment {
   cacheManagerProxy: CacheManagerProxy;
   cacheManagerAddress: string;
   owner: Signer;
+  provider: Provider;
 }
 
 /**
@@ -39,7 +40,12 @@ export async function deployCMP(): Promise<CMPDeployment> {
     cacheManagerAddress,
     arbWasmCacheAddress
   );
-  return { cacheManagerProxy, cacheManagerAddress, owner };
+  return {
+    cacheManagerProxy,
+    cacheManagerAddress,
+    owner,
+    provider: owner.provider,
+  };
 }
 
 /**
@@ -63,7 +69,7 @@ export async function deployDummyWASMContracts(): Promise<string[]> {
       );
     }
     const { stdout, stderr } = await execPromise(
-      `bash scripts/deploy-dummy-wasm.sh ${dummyContractsAmount}`
+      `bash test/scripts/deploy-dummy-wasm.sh ${dummyContractsAmount}`
     );
 
     if (stderr) {
