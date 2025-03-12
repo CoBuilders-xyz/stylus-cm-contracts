@@ -3,6 +3,7 @@ pragma solidity 0.8.20;
 
 import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 interface ICacheManager {
     function getMinBid(address program) external view returns (uint192);
@@ -13,10 +14,9 @@ interface IArbWasmCache {
     function codehashIsCached(bytes32 codehash) external view returns (bool);
 }
 
-contract CacheManagerProxy {
+contract CacheManagerProxy is AutomationCompatibleInterface, Ownable {
     using EnumerableSet for EnumerableSet.AddressSet;
 
-    // Variables
     struct ContractConfig {
         address contractAddress;
         uint256 maxBid;
@@ -40,11 +40,7 @@ contract CacheManagerProxy {
         address indexed contractAddress,
         uint256 maxBid
     );
-    event BidPlaced(
-        address indexed user,
-        address indexed contractAddress,
-        uint256 bidAmount
-    );
+    event BidPlaced(address indexed contractAddress, uint256 bidAmount);
     event ContractRemoved(
         address indexed user,
         address indexed contractAddress
@@ -75,7 +71,6 @@ contract CacheManagerProxy {
         owner = msg.sender;
     }
 
-    // TODO Add Testing for userBalance and already exist contract.
     function insertOrUpdateContract(
         address _contract,
         uint256 _maxBid
@@ -160,55 +155,26 @@ contract CacheManagerProxy {
         delete userConfig[msg.sender].contracts;
         userAddresses.remove(msg.sender);
     }
-    function placeUserBid(
-        address _user,
+
+    function placeBid(
         address _contract,
-        uint256 _bid
-    ) internal returns (bool) {
+        uint192 _bid
+    ) internal returns (bool success) {
+        require(_contract != address(0), "Invalid contract address");
+
         uint192 minBid = cacheManager.getMinBid(_contract);
         require(_bid >= minBid, "Insufficient bid amount");
 
-        // Check balance before attempting bid to prevent unnecessary gas consumption
-        uint256 maxPossibleGas = 100000; // Set a reasonable gas limit estimate
-        uint256 maxGasCost = maxPossibleGas * tx.gasprice;
-        require(
-            userConfig[_user].balance >= _bid + maxGasCost,
-            "Insufficient balance for bid and potential gas"
-        );
-
-        uint256 initialGas = gasleft();
-
         try cacheManager.placeBid{value: _bid}(_contract) {
-            // Bid successful - calculate actual gas used
-            uint256 gasUsed = initialGas - gasleft();
-            uint256 actualGasCost = gasUsed * tx.gasprice;
-
-            // Deduct bid amount and actual gas cost
-            userConfig[_user].balance -= (_bid + actualGasCost);
-
-            // Update lastBid when successful
-            for (uint256 i = 0; i < userConfig[_user].contracts.length; i++) {
-                if (
-                    userConfig[_user].contracts[i].contractAddress == _contract
-                ) {
-                    userConfig[_user].contracts[i].lastBid = _bid;
-                    break;
-                }
-            }
-
-            emit BidPlaced(_user, _contract, _bid);
+            emit BidPlaced(_contract, _bid);
             return true;
         } catch {
-            // If bid fails (e.g., "Already Cached"):
-            // 1. The bid amount is automatically returned (due to revert)
-            // 2. We still need to charge for gas used up to the revert
-            uint256 gasUsed = initialGas - gasleft();
-            uint256 actualGasCost = gasUsed * tx.gasprice;
-
-            // Only deduct the gas cost for the failed attempt
-            userConfig[_user].balance -= actualGasCost;
             return false;
         }
+    }
+
+    function placeBidExternal(address _contract, uint192 _bid) external {
+        placeBid(_contract, _bid);
     }
 
     function checkUpkeep(
@@ -242,14 +208,12 @@ contract CacheManagerProxy {
             }
         }
 
-        performData = abi.encode(users, totalContracts);
+        performData = abi.encode(totalContracts);
     }
 
     function performUpkeep(bytes calldata performData) external {
-        (address[] memory users, uint256 totalContracts) = abi.decode(
-            performData,
-            (address[], uint256)
-        );
+        uint256 totalContracts = abi.decode(performData, (uint256));
+        address[] memory users = userAddresses.values();
 
         uint256 totalBids = 0;
         for (uint256 u = 0; u < users.length; u++) {
@@ -270,17 +234,26 @@ contract CacheManagerProxy {
                             contractAddress.codehash
                         ) && minBid < contracts[i].lastBid
                     ) {
-                        bool bidSuccess = placeUserBid(
-                            user,
-                            contractAddress,
-                            minBid
+                        UserConfig storage userData = userConfig[user]; // Correct reference
+                        require(
+                            userData.balance >= minBid,
+                            "Insufficient balance for bid"
                         );
+
+                        bool bidSuccess = placeBid(contractAddress, minBid);
                         if (bidSuccess) {
-                            totalBids++;
-                            if (totalBids >= totalContracts) {
-                                return;
-                            }
+                            userData.balance -= minBid;
+                        } else {
+                            revert("Bid placement failed");
                         }
+
+                        // if (bidSuccess) {
+                        //     userConfig[user].balance -= minBid;
+                        //     totalBids++;
+                        //     if (totalBids >= totalContracts) {
+                        //         return;
+                        //     }
+                        // }
                     }
                 }
             }
