@@ -124,6 +124,30 @@ export async function setCacheSize() {
 }
 
 /**
+ * Gets the minimum bid for a contract.
+ *
+ * @param contractAddress Address of the contract to get the minimum bid for
+ * @returns Minimum bid for the contract
+ */
+export async function getMinBid(contractAddress: string) {
+  const cacheManagerAddress = hre.ethers.getAddress(
+    process.env.CACHE_MANAGER_ADDRESS || '0x'
+  );
+  const signer = await hre.ethers.getSigner(
+    process.env.ARBLOC_OWNER_ADD || '0x'
+  );
+  const cacheManagerContract = new hre.ethers.Contract(
+    cacheManagerAddress,
+    cacheManagerABIJson.abi,
+    signer
+  );
+  const contractCodeHash = hre.ethers.keccak256(
+    await hre.ethers.provider.getCode(contractAddress)
+  );
+  return await cacheManagerContract['getMinBid(bytes32)'](contractCodeHash);
+}
+
+/**
  * Fills the cache with bids of specified amount.
  *
  * @param contracts Array of contract addresses to cache
