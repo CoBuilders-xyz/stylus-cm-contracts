@@ -6,6 +6,9 @@ node_modules
 node_modules
 .env
 
+#Test suite
+test/db/*.db
+
 # Hardhat files
 /cache
 /artifacts
