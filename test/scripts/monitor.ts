@@ -8,6 +8,7 @@ dotenv.config();
 
 const ALERT_THRESHOLD = ethers.parseEther('1.0'); // 1 ETH
 const LOW_SUCCESS_RATE_THRESHOLD = 0.8; // 80%
+const DEBUG = true;
 
 export class CacheManagerMonitor {
   private contract: ethers.Contract;
@@ -30,16 +31,77 @@ export class CacheManagerMonitor {
     this.testId = initialTestId;
   }
 
+  private log(...args: any[]) {
+    if (DEBUG) {
+      console.log('[Monitor]:', ...args);
+    }
+  }
+
+  private logError(...args: any[]) {
+    if (DEBUG) {
+      console.error('[Monitor Error]:', ...args);
+    }
+  }
+
   async setTestId(newTestId: string) {
     this.testId = newTestId;
+    if (!this.db) {
+      await this.initDB(false);
+    }
+    this.log(`Test ID set to: ${this.testId}`);
   }
 
   async setContractAddress(newContractAddress: string) {
+    if (this.contract) {
+      this.contract.removeAllListeners();
+    }
+
     this.contract = new ethers.Contract(
       newContractAddress,
       CacheManagerProxyABI,
       this.provider
     );
+
+    this.log(`Contract address set to: ${newContractAddress}`);
+  }
+
+  private async attachEventListeners() {
+    this.log('Attaching event listeners...');
+
+    this.contract.on('BidDetails', async (...args) => {
+      this.log('BidDetails event received:', ...args);
+      try {
+        const [user, contract, bidAmount, minBid, maxBid, balance, success] =
+          args;
+        await this.processBidEvent(
+          user,
+          contract,
+          bidAmount,
+          minBid,
+          maxBid,
+          balance,
+          success
+        );
+      } catch (error) {
+        this.logError('Error processing BidDetails event:', error);
+      }
+    });
+
+    this.contract.on('UpkeepPerformed', async (...args) => {
+      this.log('UpkeepPerformed event received:', ...args);
+      try {
+        const [total, successful, failed, timestamp] = args;
+        await this.processUpkeepEvent(total, successful, failed, timestamp);
+      } catch (error) {
+        this.logError('Error processing UpkeepPerformed event:', error);
+      }
+    });
+
+    this.contract.on('error', (error) => {
+      this.logError('Contract event error:', error);
+    });
+
+    this.log('Event listeners attached successfully');
   }
 
   private async initDB(clean: boolean = false) {
@@ -96,54 +158,19 @@ export class CacheManagerMonitor {
   }
 
   async startMonitoring(cleanDB: boolean = false) {
-    if (this.isMonitoring) return;
+    if (this.isMonitoring) {
+      await this.stopMonitoring();
+    }
+
+    this.log('Starting monitoring...');
+    this.log(`Contract address: ${await this.contract.getAddress()}`);
+    this.log(`Test ID: ${this.testId}`);
 
     await this.initDB(cleanDB);
+    await this.attachEventListeners();
     this.isMonitoring = true;
 
-    this.contract.on(
-      'BidDetails',
-      async (user, contract, bidAmount, minBid, maxBid, balance, success) => {
-        console.log('BidDetails event received');
-        await this.processBidEvent(
-          user,
-          contract,
-          bidAmount,
-          minBid,
-          maxBid,
-          balance,
-          success
-        );
-      }
-    );
-
-    this.contract.on(
-      'UpkeepPerformed',
-      async (total, successful, failed, timestamp) => {
-        await this.processUpkeepEvent(total, successful, failed, timestamp);
-      }
-    );
-
-    this.contract.on(
-      'UserBalanceOperation',
-      async (user, operation, amount, newBalance, timestamp) => {
-        await this.processBalanceEvent(
-          user,
-          operation,
-          amount,
-          newBalance,
-          timestamp
-        );
-      }
-    );
-  }
-
-  async stopMonitoring() {
-    if (!this.isMonitoring) return;
-
-    this.contract.removeAllListeners();
-    await this.db.close();
-    this.isMonitoring = false;
+    this.log('Monitoring started successfully');
   }
 
   private async processBidEvent(
@@ -155,25 +182,39 @@ export class CacheManagerMonitor {
     balance: bigint,
     success: boolean
   ) {
+    this.log(`Processing bid event for test ${this.testId}`);
     try {
-      await this.db.run(
-        `
+      if (!this.db) {
+        await this.initDB(false);
+      }
+
+      const query = `
         INSERT INTO bids (test_id, user, contract, bid_amount, min_bid, max_bid, balance, success, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          this.testId,
-          user,
-          contract,
-          bidAmount.toString(),
-          minBid.toString(),
-          maxBid.toString(),
-          balance.toString(),
-          success ? 1 : 0,
-          new Date().toISOString(),
-        ]
-      );
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+      const params = [
+        this.testId,
+        user,
+        contract,
+        bidAmount.toString(),
+        minBid.toString(),
+        maxBid.toString(),
+        balance.toString(),
+        success ? 1 : 0,
+        new Date().toISOString(),
+      ];
+
+      this.log('Executing query:', query);
+      this.log('With params:', params);
+
+      await this.db.run(query, params);
+      this.log('Bid event stored successfully in database');
     } catch (error) {
-      console.error('Error storing bid event:', error);
+      this.logError('Error storing bid event:', error);
+      this.logError(
+        'Error details:',
+        error instanceof Error ? error.stack : error
+      );
     }
 
     if (bidAmount > ALERT_THRESHOLD) {
@@ -244,13 +285,34 @@ export class CacheManagerMonitor {
     console.log(`ALERT: ${message}`);
   }
 
-  // Add method to check database content
   async checkDatabase() {
-    const bids = await this.db.all('SELECT * FROM bids');
+    console.log(`Checking database for test ${this.testId}`);
+    if (!this.db) {
+      console.log('Database not initialized, initializing now...');
+      await this.initDB(false);
+    }
+    const bids = await this.db.all('SELECT * FROM bids WHERE test_id = ?', [
+      this.testId,
+    ]);
     console.log('Current bids in database:', bids);
     return bids;
   }
+
+  async stopMonitoring() {
+    if (!this.isMonitoring) {
+      console.log('Monitor is not running');
+      return;
+    }
+
+    console.log('Stopping monitoring...');
+    this.contract.removeAllListeners();
+    await this.db.close();
+    this.isMonitoring = false;
+    console.log('Monitoring stopped successfully');
+  }
 }
+
+// TODO make function for waiting arbitrary time for known events to be emitted.
 
 // Only start monitoring if this file is run directly
 if (require.main === module) {
