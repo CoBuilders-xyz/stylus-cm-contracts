@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.20;
 
+// Chainlink
 import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol";
+
+// OpenZeppelin
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /// @notice Interface for the Cache Manager contract
 interface ICacheManager {
@@ -21,16 +26,24 @@ interface IArbWasmCache {
 /// @notice A proxy contract that manages user bids for contract caching in the Stylus VM
 contract CacheManagerProxy is
     AutomationCompatibleInterface,
-    Ownable,
-    ReentrancyGuard
+    Initializable,
+    UUPSUpgradeable,
+    OwnableUpgradeable,
+    ReentrancyGuardUpgradeable
 {
     using EnumerableSet for EnumerableSet.AddressSet;
 
+    // ------------------------------------------------------------------------
     // Constants
-    uint256 private constant MAX_CONTRACTS_PER_USER = 50;
-    uint256 private constant MIN_BID_AMOUNT = 1 wei;
+    // ------------------------------------------------------------------------
 
+    uint256 private constant MAX_CONTRACTS_PER_USER = 50;
+    uint256 private constant MIN_BID_AMOUNT = 1 wei; // TODO: Check if this is correct
+
+    // ------------------------------------------------------------------------
     // State variables
+    // ------------------------------------------------------------------------
+
     bool public paused;
 
     struct ContractConfig {
@@ -45,13 +58,16 @@ contract CacheManagerProxy is
         uint256 balance;
     }
 
-    ICacheManager public immutable cacheManager;
-    IArbWasmCache public immutable arbWasmCache;
+    ICacheManager public cacheManager;
+    IArbWasmCache public arbWasmCache;
 
     mapping(address => UserConfig) public userConfig;
     EnumerableSet.AddressSet private userAddresses;
 
+    // ------------------------------------------------------------------------
     // Events
+    // ------------------------------------------------------------------------
+
     event ContractAdded(
         address indexed user,
         address indexed contractAddress,
@@ -115,7 +131,10 @@ contract CacheManagerProxy is
         uint256 timestamp
     );
 
+    // ------------------------------------------------------------------------
     // Custom errors
+    // ------------------------------------------------------------------------
+
     error InvalidAddress();
     error InvalidBid();
     error InsufficientBalance();
@@ -124,20 +143,42 @@ contract CacheManagerProxy is
     error TooManyContracts();
     error ContractPaused();
 
+    // ------------------------------------------------------------------------
     // Modifiers
+    // ------------------------------------------------------------------------
+
     modifier whenNotPaused() {
         if (paused) revert ContractPaused();
         _;
     }
 
-    constructor(
+    // ------------------------------------------------------------------------
+    // Initializer
+    // ------------------------------------------------------------------------
+
+    /// @notice Initializes the upgradeable contract
+    function initialize(
         address _cacheManager,
         address _arbWasmCache
-    ) Ownable(msg.sender) {
+    ) public initializer {
         if (_cacheManager == address(0)) revert InvalidAddress();
+        if (_arbWasmCache == address(0)) revert InvalidAddress();
+
+        __Ownable_init(); // Upgradeable Ownable
+        __ReentrancyGuard_init(); // Upgradeable Reentrancy Guard
+
         cacheManager = ICacheManager(_cacheManager);
         arbWasmCache = IArbWasmCache(_arbWasmCache);
     }
+
+    // @notice Required for UUPS upgrades
+    function _authorizeUpgrade(
+        address newImplementation
+    ) internal override onlyOwner {}
+
+    // ------------------------------------------------------------------------
+    // Emergency functions
+    // ------------------------------------------------------------------------
 
     /// @notice Pause contract operations
     function pause() external onlyOwner {
@@ -160,6 +201,16 @@ contract CacheManagerProxy is
     {
         return userAddresses.values();
     }
+
+    function emergencyWithdraw() external onlyOwner {
+        uint256 balance = address(this).balance;
+        (bool success, ) = owner().call{value: balance}("");
+        require(success, "Transfer failed");
+    }
+
+    // ------------------------------------------------------------------------
+    // Contract functions
+    // ------------------------------------------------------------------------
 
     /// @notice Inserts or updates a contract configuration
     function insertOrUpdateContract(
@@ -377,7 +428,6 @@ contract CacheManagerProxy is
         return userConfig[msg.sender].balance;
     }
 
-    // Utility functions
     function withdrawBalance() external nonReentrant whenNotPaused {
         uint256 amount = userConfig[msg.sender].balance;
         if (amount == 0) revert InsufficientBalance();

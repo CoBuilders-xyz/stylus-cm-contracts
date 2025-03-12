@@ -19,8 +19,6 @@ import { CacheManagerMonitor } from './scripts/monitor';
 
 dotenv.config();
 
-const logFile = 'cacheManagerProxyTest.log';
-
 describe('CacheManagerProxy', async function () {
   let cmpDeployment: CMPDeployment;
   let dummyContracts: string[];
@@ -41,10 +39,10 @@ describe('CacheManagerProxy', async function () {
 
     monitor = new CacheManagerMonitor(
       '0x0000000000000000000000000000000000000000',
-      new JsonRpcProvider(process.env.RPC_URL),
+      new JsonRpcProvider(process.env.RPC),
       uuidv4()
     );
-    await monitor.startMonitoring();
+    await monitor.startMonitoring(true);
     console.log('---------------------------------------');
   });
 
@@ -59,14 +57,16 @@ describe('CacheManagerProxy', async function () {
     await evictAll();
 
     // Update monitor with new CMP address
-    const newTestId = uuidv4();
-    await monitor.setTestId(newTestId);
+    await monitor.setTestId(uuidv4());
     await monitor.setContractAddress(
       await cmpDeployment.cacheManagerProxy.getAddress()
     );
+    await monitor.startMonitoring();
   });
 
   afterEach(async () => {
+    // Add small delay to allow events to be processed
+    await new Promise((resolve) => setTimeout(resolve, 5000));
     await monitor.stopMonitoring();
   });
 
@@ -589,8 +589,10 @@ describe('CacheManagerProxy', async function () {
         const maxBid = hre.ethers.parseEther('0.3');
         const biddingFunds = hre.ethers.parseEther('1');
 
-        //
-        await fillCacheWithBids(contractToFillAddress, '0.2'); // to make minSuggestedBid > 0
+        // Add a small delay to ensure monitor is ready
+        // await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        await fillCacheWithBids(contractToFillAddress, '0.2');
 
         // Setup contract for user
         await cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
@@ -614,13 +616,10 @@ describe('CacheManagerProxy', async function () {
           .to.emit(cmpDeployment.cacheManagerProxy, 'BidPlaced')
           .withArgs(user.address, contractToCacheAddress, minBid);
 
-        // Check final state
+        // Verify the results
         const finalBalance =
           await cmpDeployment.cacheManagerProxy.getUserBalance();
-
         const isCachedAfter = await isContractCached(contractToCacheAddress);
-
-        // Remove event listener
 
         expect(finalBalance).to.be.lt(initialBalance);
         expect(isCachedAfter).to.be.true;

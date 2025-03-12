@@ -33,15 +33,22 @@ export async function deployCMP(): Promise<CMPDeployment> {
     process.env.ARB_WASM_CACHE_ADDRESS || '0x'
   );
 
-  const CacheManagerProxy = await hre.ethers.getContractFactory(
+  const CacheManagerProxyFactory = await hre.ethers.getContractFactory(
     'CacheManagerProxy'
   );
-  const cacheManagerProxy = await CacheManagerProxy.deploy(
-    cacheManagerAddress,
-    arbWasmCacheAddress
+
+  const upgradableProxy = await hre.upgrades.deployProxy(
+    CacheManagerProxyFactory,
+    [cacheManagerAddress, arbWasmCacheAddress],
+    {
+      initializer: 'initialize',
+    }
   );
+
+  await upgradableProxy.waitForDeployment();
+
   return {
-    cacheManagerProxy,
+    cacheManagerProxy: upgradableProxy,
     cacheManagerAddress,
     owner,
     provider: owner.provider,
