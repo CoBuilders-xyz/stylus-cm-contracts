@@ -8,7 +8,7 @@ dotenv.config();
 
 const ALERT_THRESHOLD = ethers.parseEther('1.0'); // 1 ETH
 const LOW_SUCCESS_RATE_THRESHOLD = 0.8; // 80%
-const DEBUG = true;
+const DEBUG = false;
 
 export class CacheManagerMonitor {
   private contract: ethers.Contract;
@@ -304,11 +304,11 @@ export class CacheManagerMonitor {
       return;
     }
 
-    console.log('Stopping monitoring...');
+    this.log('Stopping monitoring...');
     this.contract.removeAllListeners();
     await this.db.close();
     this.isMonitoring = false;
-    console.log('Monitoring stopped successfully');
+    this.log('Monitoring stopped successfully');
   }
 }
 
