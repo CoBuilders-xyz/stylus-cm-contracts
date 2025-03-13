@@ -139,7 +139,6 @@ contract CacheManagerProxy is
     error InvalidBid();
     error InsufficientBalance();
     error ContractNotFound();
-    error NoContractsToRemove();
     error TooManyContracts();
     error ContractPaused();
 
@@ -215,7 +214,8 @@ contract CacheManagerProxy is
     /// @notice Inserts or updates a contract configuration
     function insertOrUpdateContract(
         address _contract,
-        uint256 _maxBid
+        uint256 _maxBid,
+        bool _enabled
     ) external payable whenNotPaused {
         if (_contract == address(0)) revert InvalidAddress();
         if (_maxBid < MIN_BID_AMOUNT) revert InvalidBid();
@@ -240,7 +240,7 @@ contract CacheManagerProxy is
                 contractAddress: _contract,
                 maxBid: _maxBid,
                 lastBid: type(uint256).max,
-                enabled: true
+                enabled: _enabled
             })
         );
 
@@ -305,10 +305,12 @@ contract CacheManagerProxy is
     /// @notice Removes a contract from user's configuration
     function removeContract(address _contract) external {
         ContractConfig[] storage contracts = userConfig[msg.sender].contracts;
-        if (contracts.length == 0) revert NoContractsToRemove();
+        if (contracts.length == 0) revert ContractNotFound();
 
+        bool found = false;
         for (uint256 i = 0; i < contracts.length; i++) {
             if (contracts[i].contractAddress == _contract) {
+                found = true;
                 contracts[i] = contracts[contracts.length - 1];
                 contracts.pop();
 
@@ -327,13 +329,23 @@ contract CacheManagerProxy is
     function removeAllContracts() external {
         ContractConfig[] storage contracts = userConfig[msg.sender].contracts;
         uint256 length = contracts.length;
-        if (length == 0) revert NoContractsToRemove();
+        if (length == 0) revert ContractNotFound();
 
         for (uint256 i = 0; i < length; i++) {
             emit ContractRemoved(msg.sender, contracts[i].contractAddress);
         }
         delete userConfig[msg.sender].contracts;
         userAddresses.remove(msg.sender);
+    }
+
+    function setContractEnabled(address _contract, bool _enabled) external {
+        ContractConfig[] storage contracts = userConfig[msg.sender].contracts;
+        for (uint256 i = 0; i < contracts.length; i++) {
+            if (contracts[i].contractAddress == _contract) {
+                contracts[i].enabled = _enabled;
+                return;
+            }
+        }
     }
 
     // Chainlink Automation methods

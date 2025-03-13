@@ -14,6 +14,7 @@ import type { CacheManagerProxy } from '../typechain-types';
 export interface CMPDeployment {
   cacheManagerProxy: CacheManagerProxy;
   cacheManagerAddress: string;
+  arbWasmCacheAddress: string;
   owner: Signer;
   provider: Provider;
 }
@@ -50,6 +51,7 @@ export async function deployCMP(): Promise<CMPDeployment> {
   return {
     cacheManagerProxy: upgradableProxy,
     cacheManagerAddress,
+    arbWasmCacheAddress,
     owner,
     provider: owner.provider,
   };
