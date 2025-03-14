@@ -87,6 +87,36 @@ export class CacheManagerMonitor {
       }
     });
 
+    this.contract.on('BidPlaced', async (...args) => {
+      this.log('BidPlaced event received:', ...args);
+      try {
+        const [user, contract, bidAmount] = args;
+        await this.processBidPlacedEvent(user, contract, bidAmount);
+      } catch (error) {
+        this.logError('Error processing BidPlaced event:', error);
+      }
+    });
+
+    this.contract.on('BidError', async (...args) => {
+      this.log('BidError event received:', ...args);
+      try {
+        const [user, contract, bidAmount, reason] = args;
+        await this.processBidErrorEvent(user, contract, bidAmount, reason);
+      } catch (error) {
+        this.logError('Error processing BidError event:', error);
+      }
+    });
+
+    this.contract.on('BidAttempted', async (...args) => {
+      this.log('BidAttempted event received:', ...args);
+      try {
+        const [user, contract, bidAmount, success] = args;
+        await this.processBidAttemptedEvent(user, contract, bidAmount, success);
+      } catch (error) {
+        this.logError('Error processing BidAttempted event:', error);
+      }
+    });
+
     this.contract.on('UpkeepPerformed', async (...args) => {
       this.log('UpkeepPerformed event received:', ...args);
       try {
@@ -278,6 +308,102 @@ export class CacheManagerMonitor {
       await this.sendAlert(
         `Large withdrawal: ${ethers.formatEther(amount)} ETH by ${user}`
       );
+    }
+  }
+
+  private async processBidPlacedEvent(
+    user: string,
+    contract: string,
+    bidAmount: bigint
+  ) {
+    this.log(`Processing BidPlaced event for test ${this.testId}`);
+    try {
+      if (!this.db) {
+        await this.initDB(false);
+      }
+
+      const query = `
+        INSERT INTO bids (test_id, user, contract, bid_amount, success, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?)`;
+
+      const params = [
+        this.testId,
+        user,
+        contract,
+        bidAmount.toString(),
+        1, // success is true for BidPlaced events
+        new Date().toISOString(),
+      ];
+
+      await this.db.run(query, params);
+      this.log('BidPlaced event stored successfully in database');
+    } catch (error) {
+      this.logError('Error storing BidPlaced event:', error);
+    }
+  }
+
+  private async processBidErrorEvent(
+    user: string,
+    contract: string,
+    bidAmount: bigint,
+    reason: string
+  ) {
+    this.log(`Processing BidError event for test ${this.testId}`);
+    try {
+      if (!this.db) {
+        await this.initDB(false);
+      }
+
+      const query = `
+        INSERT INTO bids (test_id, user, contract, bid_amount, success, error_reason, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`;
+
+      const params = [
+        this.testId,
+        user,
+        contract,
+        bidAmount.toString(),
+        0, // success is false for BidError events
+        reason,
+        new Date().toISOString(),
+      ];
+
+      await this.db.run(query, params);
+      this.log('BidError event stored successfully in database');
+    } catch (error) {
+      this.logError('Error storing BidError event:', error);
+    }
+  }
+
+  private async processBidAttemptedEvent(
+    user: string,
+    contract: string,
+    bidAmount: bigint,
+    success: boolean
+  ) {
+    this.log(`Processing BidAttempted event for test ${this.testId}`);
+    try {
+      if (!this.db) {
+        await this.initDB(false);
+      }
+
+      const query = `
+        INSERT INTO bids (test_id, user, contract, bid_amount, success, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?)`;
+
+      const params = [
+        this.testId,
+        user,
+        contract,
+        bidAmount.toString(),
+        success ? 1 : 0,
+        new Date().toISOString(),
+      ];
+
+      await this.db.run(query, params);
+      this.log('BidAttempted event stored successfully in database');
+    } catch (error) {
+      this.logError('Error storing BidAttempted event:', error);
     }
   }
 

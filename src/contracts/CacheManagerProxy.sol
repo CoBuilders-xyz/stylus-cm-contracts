@@ -228,6 +228,7 @@ contract CacheManagerProxy is
         for (uint256 i = 0; i < contracts.length; i++) {
             if (contracts[i].contractAddress == _contract) {
                 contracts[i].maxBid = _maxBid;
+                contracts[i].enabled = _enabled;
                 _updateUserBalance(msg.sender, msg.value);
                 emit ContractUpdated(msg.sender, _contract, _maxBid);
                 return;
@@ -368,7 +369,8 @@ contract CacheManagerProxy is
             u < users.length && totalBids < totalContracts;
             u++
         ) {
-            UserConfig storage userData = userConfig[users[u]];
+            address user = users[u];
+            UserConfig storage userData = userConfig[user];
             ContractConfig[] storage contracts = userData.contracts;
 
             for (
@@ -379,14 +381,35 @@ contract CacheManagerProxy is
                 if (!_shouldBid(contracts[i])) continue;
 
                 totalBids++;
+                address contractAddress = contracts[i].contractAddress;
 
-                uint192 minBid = cacheManager.getMinBid(
-                    contracts[i].contractAddress
-                );
-                if (userData.balance >= minBid) {
-                    placeBid(contracts[i].contractAddress, minBid);
-                    contracts[i].lastBid = minBid;
-                    successfulBids++;
+                // Get current minimum bid
+                uint192 minBid = cacheManager.getMinBid(contractAddress);
+                uint192 bidAmount = minBid + 1;
+
+                if (
+                    bidAmount <= contracts[i].maxBid &&
+                    userData.balance >= bidAmount
+                ) {
+                    try
+                        cacheManager.placeBid{value: bidAmount}(contractAddress)
+                    {
+                        userData.balance -= bidAmount;
+                        contracts[i].lastBid = bidAmount;
+                        successfulBids++;
+                        emit BidPlaced(user, contractAddress, bidAmount);
+
+                        // Get the new minimum bid after successful bid placement
+                        minBid = cacheManager.getMinBid(contractAddress);
+                    } catch {
+                        emit BidError(
+                            user,
+                            contractAddress,
+                            bidAmount,
+                            "Bid placement failed"
+                        );
+                        failedBids++;
+                    }
                 } else {
                     failedBids++;
                 }
