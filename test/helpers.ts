@@ -9,10 +9,10 @@ const execPromise = util.promisify(exec);
 
 import cacheManagerABIJson from '../src/abis/cacheManagerABI.json';
 import arbWasmCacheABIJson from '../src/abis/arbWasmCacheABI.json';
-import type { CacheManagerProxy } from '../typechain-types';
+import type { CacheManagerAutomation } from '../typechain-types';
 
-export interface CMPDeployment {
-  cacheManagerProxy: CacheManagerProxy;
+export interface CMADeployment {
+  cacheManagerAutomation: CacheManagerAutomation;
   cacheManagerAddress: string;
   arbWasmCacheAddress: string;
   owner: Signer;
@@ -20,12 +20,12 @@ export interface CMPDeployment {
 }
 
 /**
- * Deploys a Cache Manager Proxy contract and returns its deployment details.
+ * Deploys a Cache Manager Automation contract and returns its deployment details.
  *
- * @returns {Promise<CMPDeployment>} An object containing the deployed Cache Manager Proxy instance,
+ * @returns {Promise<CMADeployment>} An object containing the deployed Cache Manager Automation instance,
  * the cache manager address, and the owner signer.
  */
-export async function deployCMP(): Promise<CMPDeployment> {
+export async function deployCMA(): Promise<CMADeployment> {
   const [owner] = await hre.ethers.getSigners();
   const cacheManagerAddress = hre.ethers.getAddress(
     process.env.CACHE_MANAGER_ADDRESS || '0x'
@@ -34,12 +34,12 @@ export async function deployCMP(): Promise<CMPDeployment> {
     process.env.ARB_WASM_CACHE_ADDRESS || '0x'
   );
 
-  const CacheManagerProxyFactory = await hre.ethers.getContractFactory(
-    'CacheManagerProxy'
+  const CacheManagerAutomationFactory = await hre.ethers.getContractFactory(
+    'CacheManagerAutomation'
   );
 
   const upgradableProxy = await hre.upgrades.deployProxy(
-    CacheManagerProxyFactory,
+    CacheManagerAutomationFactory,
     [cacheManagerAddress, arbWasmCacheAddress],
     {
       initializer: 'initialize',
@@ -49,7 +49,7 @@ export async function deployCMP(): Promise<CMPDeployment> {
   await upgradableProxy.waitForDeployment();
 
   return {
-    cacheManagerProxy: upgradableProxy,
+    cacheManagerAutomation: upgradableProxy,
     cacheManagerAddress,
     arbWasmCacheAddress,
     owner,

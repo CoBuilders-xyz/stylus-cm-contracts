@@ -2,7 +2,7 @@ import { ethers } from 'ethers';
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import dotenv from 'dotenv';
-import { abi as CacheManagerProxyABI } from '../../artifacts/src/contracts/CacheManagerProxy.sol/CacheManagerProxy.json';
+import { abi as CacheManagerAutomationABI } from '../../artifacts/src/contracts/CacheManagerAutomation.sol/CacheManagerAutomation.json';
 
 dotenv.config();
 
@@ -25,7 +25,7 @@ export class CacheManagerMonitor {
     this.provider = provider;
     this.contract = new ethers.Contract(
       contractAddress,
-      CacheManagerProxyABI,
+      CacheManagerAutomationABI,
       provider
     );
     this.testId = initialTestId;
@@ -58,7 +58,7 @@ export class CacheManagerMonitor {
 
     this.contract = new ethers.Contract(
       newContractAddress,
-      CacheManagerProxyABI,
+      CacheManagerAutomationABI,
       this.provider
     );
 
@@ -443,7 +443,7 @@ export class CacheManagerMonitor {
 // Only start monitoring if this file is run directly
 if (require.main === module) {
   const monitor = new CacheManagerMonitor(
-    process.env.CACHE_MANAGER_PROXY_ADDRESS!,
+    process.env.CACHE_MANAGER_AUTOMATION_ADDRESS!,
     new ethers.JsonRpcProvider(process.env.RPC_URL),
     process.env.TEST_ID!
   );
