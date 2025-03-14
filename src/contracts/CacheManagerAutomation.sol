@@ -11,20 +11,14 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Own
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-/// @notice Interface for the Cache Manager contract
-interface ICacheManager {
-    function getMinBid(address program) external view returns (uint192);
-    function placeBid(address program) external payable;
-}
+// Interfaces
+import "./interfaces/IExternalContracts.sol";
+import "./interfaces/ICacheManagerAutomation.sol";
 
-/// @notice Interface for the Arbitrum WASM Cache contract
-interface IArbWasmCache {
-    function codehashIsCached(bytes32 codehash) external view returns (bool);
-}
-
-/// @title Cache Manager Proxy
-/// @notice A proxy contract that manages user bids for contract caching in the Stylus VM
-contract CacheManagerProxy is
+/// @title Cache Manager Automation
+/// @notice A automation contract that manages user bids for contract caching in the Stylus VM
+contract CacheManagerAutomation is
+    ICacheManagerAutomation,
     AutomationCompatibleInterface,
     Initializable,
     UUPSUpgradeable,
@@ -46,101 +40,11 @@ contract CacheManagerProxy is
 
     bool public paused;
 
-    struct ContractConfig {
-        address contractAddress;
-        uint256 maxBid;
-        uint256 lastBid;
-        bool enabled;
-    }
-
-    struct UserConfig {
-        ContractConfig[] contracts;
-        uint256 balance;
-    }
-
     ICacheManager public cacheManager;
     IArbWasmCache public arbWasmCache;
 
     mapping(address => UserConfig) public userConfig;
     EnumerableSet.AddressSet private userAddresses;
-
-    // ------------------------------------------------------------------------
-    // Events
-    // ------------------------------------------------------------------------
-
-    event ContractAdded(
-        address indexed user,
-        address indexed contractAddress,
-        uint256 maxBid
-    );
-    event ContractUpdated(
-        address indexed user,
-        address indexed contractAddress,
-        uint256 maxBid
-    );
-    event BidPlaced(
-        address indexed user,
-        address indexed contractAddress,
-        uint256 bidAmount
-    );
-    event ContractRemoved(
-        address indexed user,
-        address indexed contractAddress
-    );
-    event BalanceUpdated(address indexed user, uint256 newBalance);
-    event BidAttempted(
-        address indexed user,
-        address indexed contractAddress,
-        uint256 bid,
-        bool success
-    );
-    event BidError(
-        address indexed user,
-        address indexed contractAddress,
-        uint256 bid,
-        string reason
-    );
-    event Paused(address indexed account);
-    event Unpaused(address indexed account);
-    event ContractOperationPerformed(
-        address indexed user,
-        address indexed contractAddress,
-        string operation,
-        uint256 timestamp
-    );
-    event BidDetails(
-        address indexed user,
-        address indexed contractAddress,
-        uint256 bidAmount,
-        uint256 minBid,
-        uint256 maxBid,
-        uint256 userBalance,
-        bool success
-    );
-    event UpkeepPerformed(
-        uint256 totalContracts,
-        uint256 successfulBids,
-        uint256 failedBids,
-        uint256 timestamp
-    );
-    event UserBalanceOperation(
-        address indexed user,
-        string operation,
-        uint256 amount,
-        uint256 newBalance,
-        uint256 timestamp
-    );
-
-    // ------------------------------------------------------------------------
-    // Custom errors
-    // ------------------------------------------------------------------------
-
-    error InvalidAddress();
-    error InvalidBid();
-    error InsufficientBalance();
-    error ContractNotFound();
-    error TooManyContracts();
-    error ContractPaused();
 
     // ------------------------------------------------------------------------
     // Modifiers
@@ -385,7 +289,7 @@ contract CacheManagerProxy is
 
                 // Get current minimum bid
                 uint192 minBid = cacheManager.getMinBid(contractAddress);
-                uint192 bidAmount = minBid + 1;
+                uint192 bidAmount = minBid;
 
                 if (
                     bidAmount <= contracts[i].maxBid &&

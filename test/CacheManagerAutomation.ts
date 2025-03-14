@@ -5,9 +5,9 @@ import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
 
 import {
-  CMPDeployment,
+  CMADeployment,
   deployDummyWASMContracts,
-  deployCMP,
+  deployCMA,
   evictAll,
   setCacheSize,
   getMinBid,
@@ -19,9 +19,9 @@ import { CacheManagerMonitor } from './scripts/monitor';
 
 dotenv.config();
 
-describe('CacheManagerProxy', async function () {
+describe('cacheManagerAutomation', async function () {
   // Common test variables
-  let cmpDeployment: CMPDeployment;
+  let cmaDeployment: CMADeployment;
   let dummyContracts: string[];
   let monitor: CacheManagerMonitor;
 
@@ -39,7 +39,7 @@ describe('CacheManagerProxy', async function () {
     wallet?: Wallet | Signer
   ) {
     const signer = wallet || (await hre.ethers.getSigners())[0];
-    return cmpDeployment.cacheManagerProxy
+    return cmaDeployment.cacheManagerAutomation
       .connect(signer)
       .insertOrUpdateContract(contractAddress, maxBid, enabled, {
         value: bidFunding,
@@ -81,7 +81,7 @@ describe('CacheManagerProxy', async function () {
     expectedMaxBid: bigint
   ) {
     const userContracts =
-      await cmpDeployment.cacheManagerProxy.getUserContracts(userAddress);
+      await cmaDeployment.cacheManagerAutomation.getUserContracts(userAddress);
     const contract = userContracts.find(
       (c) => c.contractAddress === contractAddress
     );
@@ -95,7 +95,7 @@ describe('CacheManagerProxy', async function () {
     contractAddress: string
   ) {
     const userContracts =
-      await cmpDeployment.cacheManagerProxy.getUserContracts(userAddress);
+      await cmaDeployment.cacheManagerAutomation.getUserContracts(userAddress);
     const contract = userContracts.find(
       (c) => c.contractAddress === contractAddress
     );
@@ -107,7 +107,7 @@ describe('CacheManagerProxy', async function () {
     shouldExist: boolean
   ) {
     const userAddresses =
-      await cmpDeployment.cacheManagerProxy.getUserAddresses();
+      await cmaDeployment.cacheManagerAutomation.getUserAddresses();
     if (shouldExist) {
       expect(userAddresses.includes(userAddress)).to.equal(true);
     } else {
@@ -119,7 +119,8 @@ describe('CacheManagerProxy', async function () {
     userAddress: string,
     expectedBalance: bigint
   ) {
-    const userBalance = await cmpDeployment.cacheManagerProxy.getUserBalance();
+    const userBalance =
+      await cmaDeployment.cacheManagerAutomation.getUserBalance();
     expect(userBalance).to.equal(expectedBalance);
   }
 
@@ -149,19 +150,19 @@ describe('CacheManagerProxy', async function () {
 
   // Setup before each test
   beforeEach(async function () {
-    // Deploys a new CMP for clean start. No need to remove contracts between tests.
-    cmpDeployment = await deployCMP();
+    // Deploys a new CMA for clean start. No need to remove contracts between tests.
+    cmaDeployment = await deployCMA();
     // console.log(
-    //   `  ProxyAddress: ${await cmpDeployment.cacheManagerProxy.getAddress()}`
+    //   `  CMAAddress: ${await cmaDeployment.cacheManagerAutomation.getAddress()}`
     // );
 
     // Evict all contracts from cache for clean start.
     await evictAll();
 
-    // Update monitor with new CMP address
+    // Update monitor with new CMA address
     await monitor.setTestId(uuidv4());
     await monitor.setContractAddress(
-      await cmpDeployment.cacheManagerProxy.getAddress()
+      await cmaDeployment.cacheManagerAutomation.getAddress()
     );
     await monitor.startMonitoring();
   });
@@ -176,19 +177,19 @@ describe('CacheManagerProxy', async function () {
   describe('Deployment', async function () {
     describe('First Deployment', async function () {
       it('Should set the right owner', async function () {
-        expect(await cmpDeployment.cacheManagerProxy.owner()).to.equal(
-          await cmpDeployment.owner.getAddress()
+        expect(await cmaDeployment.cacheManagerAutomation.owner()).to.equal(
+          await cmaDeployment.owner.getAddress()
         );
       });
       it('Should set the right cache manager address', async function () {
-        expect(await cmpDeployment.cacheManagerProxy.cacheManager()).to.equal(
-          cmpDeployment.cacheManagerAddress
-        );
+        expect(
+          await cmaDeployment.cacheManagerAutomation.cacheManager()
+        ).to.equal(cmaDeployment.cacheManagerAddress);
       });
       it('Should set the right arb wasm cache address', async function () {
-        expect(await cmpDeployment.cacheManagerProxy.arbWasmCache()).to.equal(
-          cmpDeployment.arbWasmCacheAddress
-        );
+        expect(
+          await cmaDeployment.cacheManagerAutomation.arbWasmCache()
+        ).to.equal(cmaDeployment.arbWasmCacheAddress);
       });
     });
     describe('Upgradable', async function () {
@@ -198,7 +199,7 @@ describe('CacheManagerProxy', async function () {
 
   describe('Contract Management', function () {
     describe('Contract Insertion', function () {
-      it('Should insert a contract to CMP', async function () {
+      it('Should insert a contract to CMA', async function () {
         const contractToCacheAddress = hre.ethers.getAddress(dummyContracts[0]);
         const [user] = await hre.ethers.getSigners();
 
@@ -211,7 +212,7 @@ describe('CacheManagerProxy', async function () {
             user
           )
         )
-          .to.emit(cmpDeployment.cacheManagerProxy, 'ContractAdded')
+          .to.emit(cmaDeployment.cacheManagerAutomation, 'ContractAdded')
           .withArgs(user.address, contractToCacheAddress, DEFAULT_MAX_BID);
 
         await verifyContractExists(
@@ -223,13 +224,13 @@ describe('CacheManagerProxy', async function () {
         await verifyUserInAddressList(user.address, true);
       });
 
-      it('Should insert several contracts to CMP', async function () {
+      it('Should insert several contracts to CMA', async function () {
         const dummyContractsAmount = dummyContracts.length;
         const [user] = await hre.ethers.getSigners();
         const contractAddresses = [];
         const biddingFunds = [];
 
-        // Add multiple contracts to CMP
+        // Add multiple contracts to CMA
         for (let i = 0; i < dummyContractsAmount; i++) {
           const contractAddress = hre.ethers.getAddress(dummyContracts[i]);
           contractAddresses.push(contractAddress);
@@ -241,16 +242,18 @@ describe('CacheManagerProxy', async function () {
           await expect(
             insertContract(contractAddress, DEFAULT_MAX_BID, funding)
           )
-            .to.emit(cmpDeployment.cacheManagerProxy, 'ContractAdded')
+            .to.emit(cmaDeployment.cacheManagerAutomation, 'ContractAdded')
             .withArgs(user.address, contractAddress, DEFAULT_MAX_BID);
         }
 
         // Ensure all contracts were added
         let userContracts =
-          await cmpDeployment.cacheManagerProxy.getUserContracts(user.address);
+          await cmaDeployment.cacheManagerAutomation.getUserContracts(
+            user.address
+          );
         expect(userContracts.length).to.equal(dummyContractsAmount);
         const userBalance =
-          await cmpDeployment.cacheManagerProxy.getUserBalance();
+          await cmaDeployment.cacheManagerAutomation.getUserBalance();
 
         // Validate stored contract data
         for (let i = 0; i < dummyContractsAmount; i++) {
@@ -262,13 +265,13 @@ describe('CacheManagerProxy', async function () {
         expect(userBalance).to.equal(biddingFunds.reduce((a, b) => a + b));
 
         // Check user was added to userAddresses
-        const userAddresses = await cmpDeployment.cacheManagerProxy
+        const userAddresses = await cmaDeployment.cacheManagerAutomation
           .connect(user)
           .getUserAddresses();
         expect(userAddresses.includes(user.address)).to.equal(true);
       });
 
-      it('Should insert several contracts from diff wallets to CMP', async function () {
+      it('Should insert several contracts from diff wallets to CMA', async function () {
         const dummyContractsAmount = dummyContracts.length;
         const [mainWallet] = await hre.ethers.getSigners();
         const contractAddresses = [];
@@ -295,7 +298,7 @@ describe('CacheManagerProxy', async function () {
               extraWallets[i]
             )
           )
-            .to.emit(cmpDeployment.cacheManagerProxy, 'ContractAdded')
+            .to.emit(cmaDeployment.cacheManagerAutomation, 'ContractAdded')
             .withArgs(
               extraWallets[i].address,
               contractAddress,
@@ -306,10 +309,10 @@ describe('CacheManagerProxy', async function () {
         // Ensure all contracts were added correctly for each wallet
         for (let i = 0; i < dummyContractsAmount; i++) {
           const userContracts =
-            await cmpDeployment.cacheManagerProxy.getUserContracts(
+            await cmaDeployment.cacheManagerAutomation.getUserContracts(
               extraWallets[i].address
             );
-          const userBalance = await cmpDeployment.cacheManagerProxy
+          const userBalance = await cmaDeployment.cacheManagerAutomation
             .connect(extraWallets[i])
             .getUserBalance();
 
@@ -321,7 +324,7 @@ describe('CacheManagerProxy', async function () {
           expect(userBalance).to.equal(biddingFunds[i]);
 
           // Check user was added to userAddresses
-          const userAddresses = await cmpDeployment.cacheManagerProxy
+          const userAddresses = await cmaDeployment.cacheManagerAutomation
             .connect(mainWallet)
             .getUserAddresses();
           expect(
@@ -333,7 +336,7 @@ describe('CacheManagerProxy', async function () {
       });
     });
     describe('Contract Removal', function () {
-      it('Should remove a contract from CMP', async function () {
+      it('Should remove a contract from CMA', async function () {
         const contractToCacheAddress = hre.ethers.getAddress(dummyContracts[0]);
         const [user] = await hre.ethers.getSigners();
 
@@ -342,22 +345,24 @@ describe('CacheManagerProxy', async function () {
 
         // Remove the contract and check event emission
         await expect(
-          cmpDeployment.cacheManagerProxy.removeContract(contractToCacheAddress)
+          cmaDeployment.cacheManagerAutomation.removeContract(
+            contractToCacheAddress
+          )
         )
-          .to.emit(cmpDeployment.cacheManagerProxy, 'ContractRemoved')
+          .to.emit(cmaDeployment.cacheManagerAutomation, 'ContractRemoved')
           .withArgs(user.address, contractToCacheAddress);
 
         await verifyContractRemoved(user.address, contractToCacheAddress);
         await verifyUserInAddressList(user.address, false);
         await verifyUserBalance(user.address, DEFAULT_BID_FUNDING);
       });
-      it('Should remove all contracts from CMP', async function () {
+      it('Should remove all contracts from CMA', async function () {
         const dummyContractsAmount = 3; // Use just 3 contracts for simplicity
         const [user] = await hre.ethers.getSigners();
         const contractAddresses = [];
         const totalFunding = DEFAULT_BID_FUNDING * BigInt(dummyContractsAmount);
 
-        // Add multiple contracts to CMP
+        // Add multiple contracts to CMA
         for (let i = 0; i < dummyContractsAmount; i++) {
           const contractAddress = hre.ethers.getAddress(dummyContracts[i]);
           contractAddresses.push(contractAddress);
@@ -365,12 +370,12 @@ describe('CacheManagerProxy', async function () {
         }
 
         // Remove all contracts and check for event emissions
-        await expect(cmpDeployment.cacheManagerProxy.removeAllContracts())
-          .to.emit(cmpDeployment.cacheManagerProxy, 'ContractRemoved')
+        await expect(cmaDeployment.cacheManagerAutomation.removeAllContracts())
+          .to.emit(cmaDeployment.cacheManagerAutomation, 'ContractRemoved')
           .withArgs(user.address, contractAddresses[0]) // Checks the first contract removed
-          .to.emit(cmpDeployment.cacheManagerProxy, 'ContractRemoved')
+          .to.emit(cmaDeployment.cacheManagerAutomation, 'ContractRemoved')
           .withArgs(user.address, contractAddresses[1]) // Checks the second contract removed
-          .to.emit(cmpDeployment.cacheManagerProxy, 'ContractRemoved')
+          .to.emit(cmaDeployment.cacheManagerAutomation, 'ContractRemoved')
           .withArgs(user.address, contractAddresses[2]); // Checks the third contract removed
 
         // Ensure all contracts were removed
@@ -405,11 +410,11 @@ describe('CacheManagerProxy', async function () {
         const halfCount = Math.floor(walletCount / 2);
         for (let i = 0; i < halfCount; i++) {
           await expect(
-            cmpDeployment.cacheManagerProxy
+            cmaDeployment.cacheManagerAutomation
               .connect(extraWallets[i])
               .removeContract(contractAddresses[i])
           )
-            .to.emit(cmpDeployment.cacheManagerProxy, 'ContractRemoved')
+            .to.emit(cmaDeployment.cacheManagerAutomation, 'ContractRemoved')
             .withArgs(extraWallets[i].address, contractAddresses[i]);
         }
 
@@ -459,11 +464,11 @@ describe('CacheManagerProxy', async function () {
 
         // Update the max bid
         await expect(
-          cmpDeployment.cacheManagerProxy
+          cmaDeployment.cacheManagerAutomation
             .connect(user)
             .insertOrUpdateContract(contractToCacheAddress, updatedMaxBid, true)
         )
-          .to.emit(cmpDeployment.cacheManagerProxy, 'ContractUpdated')
+          .to.emit(cmaDeployment.cacheManagerAutomation, 'ContractUpdated')
           .withArgs(user.address, contractToCacheAddress, updatedMaxBid);
 
         // Verify the contract was updated
@@ -495,7 +500,7 @@ describe('CacheManagerProxy', async function () {
 
         // Update the max bid with additional funds
         await expect(
-          cmpDeployment.cacheManagerProxy
+          cmaDeployment.cacheManagerAutomation
             .connect(user)
             .insertOrUpdateContract(
               contractToCacheAddress,
@@ -506,7 +511,7 @@ describe('CacheManagerProxy', async function () {
               }
             )
         )
-          .to.emit(cmpDeployment.cacheManagerProxy, 'ContractUpdated')
+          .to.emit(cmaDeployment.cacheManagerAutomation, 'ContractUpdated')
           .withArgs(user.address, contractToCacheAddress, updatedMaxBid);
 
         // Verify the contract was updated
@@ -539,35 +544,39 @@ describe('CacheManagerProxy', async function () {
 
         // Verify initial state
         let userContracts =
-          await cmpDeployment.cacheManagerProxy.getUserContracts(user.address);
+          await cmaDeployment.cacheManagerAutomation.getUserContracts(
+            user.address
+          );
         let contract = userContracts.find(
           (c) => c.contractAddress === contractToCacheAddress
         );
         expect(contract?.enabled).to.be.true;
 
         // Update the contract to disabled
-        await cmpDeployment.cacheManagerProxy
+        await cmaDeployment.cacheManagerAutomation
           .connect(user)
           .insertOrUpdateContract(contractToCacheAddress, maxBid, false);
 
         // Verify the contract was disabled
-        userContracts = await cmpDeployment.cacheManagerProxy.getUserContracts(
-          user.address
-        );
+        userContracts =
+          await cmaDeployment.cacheManagerAutomation.getUserContracts(
+            user.address
+          );
         contract = userContracts.find(
           (c) => c.contractAddress === contractToCacheAddress
         );
         expect(contract?.enabled).to.be.false;
 
         // Update back to enabled
-        await cmpDeployment.cacheManagerProxy
+        await cmaDeployment.cacheManagerAutomation
           .connect(user)
           .insertOrUpdateContract(contractToCacheAddress, maxBid, true);
 
         // Verify the contract was enabled again
-        userContracts = await cmpDeployment.cacheManagerProxy.getUserContracts(
-          user.address
-        );
+        userContracts =
+          await cmaDeployment.cacheManagerAutomation.getUserContracts(
+            user.address
+          );
         contract = userContracts.find(
           (c) => c.contractAddress === contractToCacheAddress
         );
@@ -604,7 +613,7 @@ describe('CacheManagerProxy', async function () {
               extraWallets[i]
             )
           )
-            .to.emit(cmpDeployment.cacheManagerProxy, 'ContractAdded')
+            .to.emit(cmaDeployment.cacheManagerAutomation, 'ContractAdded')
             .withArgs(extraWallets[i].address, contractAddresses[i], maxBid);
 
           // Verify contract was added correctly
@@ -624,11 +633,11 @@ describe('CacheManagerProxy', async function () {
         // Remove contracts in different random order
         for (const i of removalIndexes) {
           await expect(
-            cmpDeployment.cacheManagerProxy
+            cmaDeployment.cacheManagerAutomation
               .connect(extraWallets[i])
               .removeContract(contractAddresses[i])
           )
-            .to.emit(cmpDeployment.cacheManagerProxy, 'ContractRemoved')
+            .to.emit(cmaDeployment.cacheManagerAutomation, 'ContractRemoved')
             .withArgs(extraWallets[i].address, contractAddresses[i]);
 
           // Verify contract was removed correctly
@@ -639,7 +648,7 @@ describe('CacheManagerProxy', async function () {
           await verifyUserInAddressList(extraWallets[i].address, false);
 
           // Check balance using the correct wallet connection
-          const userBalance = await cmpDeployment.cacheManagerProxy
+          const userBalance = await cmaDeployment.cacheManagerAutomation
             .connect(extraWallets[i])
             .getUserBalance();
           expect(userBalance).to.equal(biddingFunds);
@@ -647,7 +656,7 @@ describe('CacheManagerProxy', async function () {
 
         // Final verification that all users have been removed from the address list
         const userAddresses =
-          await cmpDeployment.cacheManagerProxy.getUserAddresses();
+          await cmaDeployment.cacheManagerAutomation.getUserAddresses();
         expect(userAddresses.length).to.equal(0);
       });
     });
@@ -658,7 +667,7 @@ describe('CacheManagerProxy', async function () {
         const bidFunding = hre.ethers.parseEther('0.01');
 
         // Add contract as enabled
-        await cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
+        await cmaDeployment.cacheManagerAutomation.insertOrUpdateContract(
           contractAddress,
           maxBid,
           true,
@@ -666,15 +675,15 @@ describe('CacheManagerProxy', async function () {
         );
 
         // Disable the contract
-        await cmpDeployment.cacheManagerProxy.setContractEnabled(
+        await cmaDeployment.cacheManagerAutomation.setContractEnabled(
           contractAddress,
           false
         );
 
         // Verify contract is disabled
         const userContracts =
-          await cmpDeployment.cacheManagerProxy.getUserContracts(
-            await cmpDeployment.owner.getAddress()
+          await cmaDeployment.cacheManagerAutomation.getUserContracts(
+            await cmaDeployment.owner.getAddress()
           );
         const contract = userContracts.find(
           (c) => c.contractAddress === contractAddress
@@ -682,15 +691,15 @@ describe('CacheManagerProxy', async function () {
         expect(contract?.enabled).to.be.false;
 
         // Re-enable the contract
-        await cmpDeployment.cacheManagerProxy.setContractEnabled(
+        await cmaDeployment.cacheManagerAutomation.setContractEnabled(
           contractAddress,
           true
         );
 
         // Verify contract is enabled again
         const updatedContracts =
-          await cmpDeployment.cacheManagerProxy.getUserContracts(
-            await cmpDeployment.owner.getAddress()
+          await cmaDeployment.cacheManagerAutomation.getUserContracts(
+            await cmaDeployment.owner.getAddress()
           );
         const updatedContract = updatedContracts.find(
           (c) => c.contractAddress === contractAddress
@@ -707,21 +716,23 @@ describe('CacheManagerProxy', async function () {
         const fundAmount = hre.ethers.parseEther('0.5');
 
         await expect(
-          cmpDeployment.cacheManagerProxy.fundBalance({ value: fundAmount })
+          cmaDeployment.cacheManagerAutomation.fundBalance({
+            value: fundAmount,
+          })
         )
-          .to.emit(cmpDeployment.cacheManagerProxy, 'BalanceUpdated')
+          .to.emit(cmaDeployment.cacheManagerAutomation, 'BalanceUpdated')
           .withArgs(user.address, fundAmount);
 
         const userBalance =
-          await cmpDeployment.cacheManagerProxy.getUserBalance();
+          await cmaDeployment.cacheManagerAutomation.getUserBalance();
         expect(userBalance).to.equal(fundAmount);
       });
 
       it('Should revert when funding with less than MIN_BID_AMOUNT', async function () {
         await expect(
-          cmpDeployment.cacheManagerProxy.fundBalance({ value: 0 })
+          cmaDeployment.cacheManagerAutomation.fundBalance({ value: 0 })
         ).to.be.revertedWithCustomError(
-          cmpDeployment.cacheManagerProxy,
+          cmaDeployment.cacheManagerAutomation,
           'InvalidBid'
         );
       });
@@ -730,15 +741,15 @@ describe('CacheManagerProxy', async function () {
         const fundAmount1 = hre.ethers.parseEther('0.1');
         const fundAmount2 = hre.ethers.parseEther('0.2');
 
-        await cmpDeployment.cacheManagerProxy.fundBalance({
+        await cmaDeployment.cacheManagerAutomation.fundBalance({
           value: fundAmount1,
         });
-        await cmpDeployment.cacheManagerProxy.fundBalance({
+        await cmaDeployment.cacheManagerAutomation.fundBalance({
           value: fundAmount2,
         });
 
         const userBalance =
-          await cmpDeployment.cacheManagerProxy.getUserBalance();
+          await cmaDeployment.cacheManagerAutomation.getUserBalance();
         expect(userBalance).to.equal(fundAmount1 + fundAmount2);
       });
     });
@@ -749,7 +760,7 @@ describe('CacheManagerProxy', async function () {
         const fundAmount = hre.ethers.parseEther('0.5');
 
         // Fund the balance first
-        await cmpDeployment.cacheManagerProxy.fundBalance({
+        await cmaDeployment.cacheManagerAutomation.fundBalance({
           value: fundAmount,
         });
 
@@ -759,7 +770,7 @@ describe('CacheManagerProxy', async function () {
         );
 
         // Withdraw and track gas costs
-        const tx = await cmpDeployment.cacheManagerProxy.withdrawBalance();
+        const tx = await cmaDeployment.cacheManagerAutomation.withdrawBalance();
         const receipt = await tx.wait();
         const gasUsed = receipt ? receipt.gasUsed * receipt.gasPrice : 0n;
 
@@ -774,15 +785,15 @@ describe('CacheManagerProxy', async function () {
 
         // Verify user balance in contract is now zero
         const userBalance =
-          await cmpDeployment.cacheManagerProxy.getUserBalance();
+          await cmaDeployment.cacheManagerAutomation.getUserBalance();
         expect(userBalance).to.equal(0);
       });
 
       it('Should revert when withdrawing with zero balance', async function () {
         await expect(
-          cmpDeployment.cacheManagerProxy.withdrawBalance()
+          cmaDeployment.cacheManagerAutomation.withdrawBalance()
         ).to.be.revertedWithCustomError(
-          cmpDeployment.cacheManagerProxy,
+          cmaDeployment.cacheManagerAutomation,
           'InsufficientBalance'
         );
       });
@@ -792,38 +803,38 @@ describe('CacheManagerProxy', async function () {
         const [user] = await hre.ethers.getSigners();
 
         // Fund the balance first
-        await cmpDeployment.cacheManagerProxy.fundBalance({
+        await cmaDeployment.cacheManagerAutomation.fundBalance({
           value: fundAmount,
         });
 
         // Withdraw and check for event
-        await expect(cmpDeployment.cacheManagerProxy.withdrawBalance())
-          .to.emit(cmpDeployment.cacheManagerProxy, 'BalanceUpdated')
+        await expect(cmaDeployment.cacheManagerAutomation.withdrawBalance())
+          .to.emit(cmaDeployment.cacheManagerAutomation, 'BalanceUpdated')
           .withArgs(user.address, 0);
       });
     });
   });
 
   describe('Bidding Mechanism', function () {
-    describe('Placing Bids From Proxy', function () {
+    describe('Placing Bids From CMA', function () {
       // Just for testing. Place bid function wont be available for the public.
-      it('Should fund the proxy and place a bid', async function () {
+      it('Should fund the cma and place a bid', async function () {
         const contractToCacheAddress = hre.ethers.getAddress(dummyContracts[0]);
         const [user] = await hre.ethers.getSigners();
         const bidAmount = hre.ethers.parseEther('0.1');
         const fundingAmount = hre.ethers.parseEther('0.5');
 
-        await cmpDeployment.cacheManagerProxy.fundBalance({
+        await cmaDeployment.cacheManagerAutomation.fundBalance({
           value: fundingAmount,
         });
 
         await expect(
-          cmpDeployment.cacheManagerProxy.placeBidExternal(
+          cmaDeployment.cacheManagerAutomation.placeBidExternal(
             contractToCacheAddress,
             bidAmount
           )
         )
-          .to.emit(cmpDeployment.cacheManagerProxy, 'BidPlaced')
+          .to.emit(cmaDeployment.cacheManagerAutomation, 'BidPlaced')
           .withArgs(user.address, contractToCacheAddress, bidAmount);
       });
     });
@@ -831,7 +842,7 @@ describe('CacheManagerProxy', async function () {
       describe('checkUpkeep', function () {
         it('Should return upkeepNeeded=false when no contracts are registered', async function () {
           const { upkeepNeeded } =
-            await cmpDeployment.cacheManagerProxy.checkUpkeep('0x');
+            await cmaDeployment.cacheManagerAutomation.checkUpkeep('0x');
           expect(upkeepNeeded).to.be.false;
         });
 
@@ -843,7 +854,7 @@ describe('CacheManagerProxy', async function () {
           const maxBid = hre.ethers.parseEther('0.1');
           const biddingFunds = hre.ethers.parseEther('1');
 
-          await cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
+          await cmaDeployment.cacheManagerAutomation.insertOrUpdateContract(
             contractToCacheAddress,
             maxBid,
             true,
@@ -858,7 +869,7 @@ describe('CacheManagerProxy', async function () {
 
           // Check upkeep
           const { upkeepNeeded } =
-            await cmpDeployment.cacheManagerProxy.checkUpkeep('0x');
+            await cmaDeployment.cacheManagerAutomation.checkUpkeep('0x');
           expect(upkeepNeeded).to.be.false;
         });
 
@@ -870,7 +881,7 @@ describe('CacheManagerProxy', async function () {
           const maxBid = hre.ethers.parseEther('0.1');
           const biddingFunds = hre.ethers.parseEther('1');
 
-          await cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
+          await cmaDeployment.cacheManagerAutomation.insertOrUpdateContract(
             contractToCacheAddress,
             maxBid,
             true,
@@ -879,7 +890,7 @@ describe('CacheManagerProxy', async function () {
 
           // Check upkeep
           const { upkeepNeeded } =
-            await cmpDeployment.cacheManagerProxy.checkUpkeep('0x');
+            await cmaDeployment.cacheManagerAutomation.checkUpkeep('0x');
           expect(upkeepNeeded).to.be.true;
         });
 
@@ -891,7 +902,7 @@ describe('CacheManagerProxy', async function () {
           const maxBid = hre.ethers.parseEther('0.1');
           const biddingFunds = hre.ethers.parseEther('1');
 
-          await cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
+          await cmaDeployment.cacheManagerAutomation.insertOrUpdateContract(
             contractToCacheAddress,
             maxBid,
             true,
@@ -906,7 +917,7 @@ describe('CacheManagerProxy', async function () {
 
           // Check upkeep
           const { upkeepNeeded } =
-            await cmpDeployment.cacheManagerProxy.checkUpkeep('0x');
+            await cmaDeployment.cacheManagerAutomation.checkUpkeep('0x');
           expect(upkeepNeeded).to.be.false;
         });
 
@@ -919,7 +930,7 @@ describe('CacheManagerProxy', async function () {
           const biddingFunds = hre.ethers.parseEther('1');
 
           for (const contractAddress of contractAddresses) {
-            await cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
+            await cmaDeployment.cacheManagerAutomation.insertOrUpdateContract(
               contractAddress,
               maxBid,
               true,
@@ -929,7 +940,7 @@ describe('CacheManagerProxy', async function () {
 
           // Check upkeep
           const { upkeepNeeded, performData } =
-            await cmpDeployment.cacheManagerProxy.checkUpkeep('0x');
+            await cmaDeployment.cacheManagerAutomation.checkUpkeep('0x');
           expect(upkeepNeeded).to.be.true;
 
           // Verify performData contains the correct number of contracts
@@ -949,7 +960,7 @@ describe('CacheManagerProxy', async function () {
           const biddingFunds = hre.ethers.parseEther('1');
 
           for (const contractAddress of contractAddresses) {
-            await cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
+            await cmaDeployment.cacheManagerAutomation.insertOrUpdateContract(
               contractAddress,
               maxBid,
               false, // disabled
@@ -959,7 +970,7 @@ describe('CacheManagerProxy', async function () {
 
           // Check upkeep
           const { upkeepNeeded } =
-            await cmpDeployment.cacheManagerProxy.checkUpkeep('0x');
+            await cmaDeployment.cacheManagerAutomation.checkUpkeep('0x');
           expect(upkeepNeeded).to.be.false;
         });
 
@@ -973,7 +984,7 @@ describe('CacheManagerProxy', async function () {
           await fillCacheWithBids(contractToCacheAddresses, '0.5');
 
           // Add contract with balance less than minBid
-          await cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
+          await cmaDeployment.cacheManagerAutomation.insertOrUpdateContract(
             contractToCacheAddress,
             maxBid,
             true,
@@ -982,17 +993,16 @@ describe('CacheManagerProxy', async function () {
 
           // Check upkeep - should still be true because checkUpkeep doesn't check balance
           const { upkeepNeeded } =
-            await cmpDeployment.cacheManagerProxy.checkUpkeep('0x');
+            await cmaDeployment.cacheManagerAutomation.checkUpkeep('0x');
           expect(upkeepNeeded).to.be.true;
         });
       });
 
       describe('performUpkeep', function () {
         it('Should do nothing when no contracts are registered', async function () {
-          const checkUpkeep = await cmpDeployment.cacheManagerProxy.checkUpkeep(
-            '0x'
-          );
-          await cmpDeployment.cacheManagerProxy.performUpkeep(
+          const checkUpkeep =
+            await cmaDeployment.cacheManagerAutomation.checkUpkeep('0x');
+          await cmaDeployment.cacheManagerAutomation.performUpkeep(
             checkUpkeep.performData
           );
           // No revert expected, but also no bids placed
@@ -1014,7 +1024,7 @@ describe('CacheManagerProxy', async function () {
           await fillCacheWithBids(contractsToFill, '0.2');
 
           // Register contract for user
-          await cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
+          await cmaDeployment.cacheManagerAutomation.insertOrUpdateContract(
             contractToCacheAddress,
             maxBid,
             true,
@@ -1023,23 +1033,22 @@ describe('CacheManagerProxy', async function () {
 
           // Get initial balance
           const initialBalance =
-            await cmpDeployment.cacheManagerProxy.getUserBalance();
+            await cmaDeployment.cacheManagerAutomation.getUserBalance();
 
           // Perform upkeep
-          const checkUpkeep = await cmpDeployment.cacheManagerProxy.checkUpkeep(
-            '0x'
-          );
+          const checkUpkeep =
+            await cmaDeployment.cacheManagerAutomation.checkUpkeep('0x');
           const minBid = await getMinBid(contractToCacheAddress);
 
           // Verify bid is placed
           await expect(
-            cmpDeployment.cacheManagerProxy.performUpkeep(
+            cmaDeployment.cacheManagerAutomation.performUpkeep(
               checkUpkeep.performData
             )
-          ).to.emit(cmpDeployment.cacheManagerProxy, 'BidPlaced');
+          ).to.emit(cmaDeployment.cacheManagerAutomation, 'BidPlaced');
           // Verify results
           const finalBalance =
-            await cmpDeployment.cacheManagerProxy.getUserBalance();
+            await cmaDeployment.cacheManagerAutomation.getUserBalance();
           const isCachedAfter = await isContractCached(contractToCacheAddress);
 
           expect(finalBalance).to.be.lt(initialBalance);
@@ -1055,7 +1064,7 @@ describe('CacheManagerProxy', async function () {
           const biddingFunds = hre.ethers.parseEther('1');
 
           // Register contract for user
-          await cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
+          await cmaDeployment.cacheManagerAutomation.insertOrUpdateContract(
             contractToCacheAddress,
             maxBid,
             true,
@@ -1070,19 +1079,18 @@ describe('CacheManagerProxy', async function () {
 
           // Get initial balance
           const initialBalance =
-            await cmpDeployment.cacheManagerProxy.getUserBalance();
+            await cmaDeployment.cacheManagerAutomation.getUserBalance();
 
           // Perform upkeep
-          const checkUpkeep = await cmpDeployment.cacheManagerProxy.checkUpkeep(
-            '0x'
-          );
-          await cmpDeployment.cacheManagerProxy.performUpkeep(
+          const checkUpkeep =
+            await cmaDeployment.cacheManagerAutomation.checkUpkeep('0x');
+          await cmaDeployment.cacheManagerAutomation.performUpkeep(
             checkUpkeep.performData
           );
 
           // Verify balance remained unchanged
           const finalBalance =
-            await cmpDeployment.cacheManagerProxy.getUserBalance();
+            await cmaDeployment.cacheManagerAutomation.getUserBalance();
           expect(finalBalance).to.equal(initialBalance);
         });
 
@@ -1094,7 +1102,7 @@ describe('CacheManagerProxy', async function () {
           const biddingFunds = hre.ethers.parseEther('1');
 
           // Register contract for user and initially disable it
-          await cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
+          await cmaDeployment.cacheManagerAutomation.insertOrUpdateContract(
             contractToCacheAddress,
             maxBid,
             false, // disabled from the start
@@ -1103,24 +1111,23 @@ describe('CacheManagerProxy', async function () {
 
           // Get initial balance
           const initialBalance =
-            await cmpDeployment.cacheManagerProxy.getUserBalance();
+            await cmaDeployment.cacheManagerAutomation.getUserBalance();
 
           // Perform upkeep
-          const checkUpkeep = await cmpDeployment.cacheManagerProxy.checkUpkeep(
-            '0x'
-          );
+          const checkUpkeep =
+            await cmaDeployment.cacheManagerAutomation.checkUpkeep('0x');
 
           // Since contract is disabled, upkeepNeeded should be false
           expect(checkUpkeep.upkeepNeeded).to.be.false;
 
           // Even if we force performUpkeep, no bids should be placed
-          await cmpDeployment.cacheManagerProxy.performUpkeep(
+          await cmaDeployment.cacheManagerAutomation.performUpkeep(
             checkUpkeep.performData
           );
 
           // Verify balance remained unchanged
           const finalBalance =
-            await cmpDeployment.cacheManagerProxy.getUserBalance();
+            await cmaDeployment.cacheManagerAutomation.getUserBalance();
           expect(finalBalance).to.equal(initialBalance);
         });
 
@@ -1137,7 +1144,7 @@ describe('CacheManagerProxy', async function () {
 
           // Register multiple contracts for the same user
           for (const contractAddress of contractAddresses) {
-            await cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
+            await cmaDeployment.cacheManagerAutomation.insertOrUpdateContract(
               contractAddress,
               maxBid,
               true,
@@ -1153,7 +1160,7 @@ describe('CacheManagerProxy', async function () {
 
           // Get initial balance
           const initialBalance =
-            await cmpDeployment.cacheManagerProxy.getUserBalance();
+            await cmaDeployment.cacheManagerAutomation.getUserBalance();
 
           // Check minimum bids for each contract
           for (const contractAddress of contractAddresses) {
@@ -1163,20 +1170,19 @@ describe('CacheManagerProxy', async function () {
           }
 
           // Perform upkeep
-          const checkUpkeep = await cmpDeployment.cacheManagerProxy.checkUpkeep(
-            '0x'
-          );
+          const checkUpkeep =
+            await cmaDeployment.cacheManagerAutomation.checkUpkeep('0x');
           expect(checkUpkeep.upkeepNeeded).to.be.true;
 
           await expect(
-            cmpDeployment.cacheManagerProxy.performUpkeep(
+            cmaDeployment.cacheManagerAutomation.performUpkeep(
               checkUpkeep.performData
             )
-          ).to.emit(cmpDeployment.cacheManagerProxy, 'UpkeepPerformed');
+          ).to.emit(cmaDeployment.cacheManagerAutomation, 'UpkeepPerformed');
 
           // Verify results
           const finalBalance =
-            await cmpDeployment.cacheManagerProxy.getUserBalance();
+            await cmaDeployment.cacheManagerAutomation.getUserBalance();
 
           // Check if any contracts were cached
           let cachedCount = 0;
@@ -1206,7 +1212,7 @@ describe('CacheManagerProxy', async function () {
           await fillCacheWithBids(contractsToFill, '0.2');
 
           // Add a contract with sufficient funds
-          await cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
+          await cmaDeployment.cacheManagerAutomation.insertOrUpdateContract(
             lowBidContract,
             hre.ethers.parseEther('0.3'),
             true,
@@ -1214,7 +1220,7 @@ describe('CacheManagerProxy', async function () {
           );
 
           // Add a contract with insufficient funds (assuming minBid will be higher than balance)
-          await cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
+          await cmaDeployment.cacheManagerAutomation.insertOrUpdateContract(
             highBidContract,
             hre.ethers.parseEther('1.0'),
             true,
@@ -1222,10 +1228,9 @@ describe('CacheManagerProxy', async function () {
           );
 
           // Perform upkeep
-          const checkUpkeep = await cmpDeployment.cacheManagerProxy.checkUpkeep(
-            '0x'
-          );
-          await cmpDeployment.cacheManagerProxy.performUpkeep(
+          const checkUpkeep =
+            await cmaDeployment.cacheManagerAutomation.checkUpkeep('0x');
+          await cmaDeployment.cacheManagerAutomation.performUpkeep(
             checkUpkeep.performData
           );
 
@@ -1243,7 +1248,7 @@ describe('CacheManagerProxy', async function () {
           const maxBid = hre.ethers.parseEther('0.3');
           const biddingFunds = hre.ethers.parseEther('1');
 
-          await cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
+          await cmaDeployment.cacheManagerAutomation.insertOrUpdateContract(
             contractAddress,
             maxBid,
             true,
@@ -1252,8 +1257,8 @@ describe('CacheManagerProxy', async function () {
 
           // Get initial contract config
           const initialContracts =
-            await cmpDeployment.cacheManagerProxy.getUserContracts(
-              await cmpDeployment.owner.getAddress()
+            await cmaDeployment.cacheManagerAutomation.getUserContracts(
+              await cmaDeployment.owner.getAddress()
             );
           const initialContract = initialContracts.find(
             (c) => c.contractAddress === contractAddress
@@ -1261,17 +1266,16 @@ describe('CacheManagerProxy', async function () {
           expect(initialContract?.lastBid).to.equal(hre.ethers.MaxUint256); // Default value
 
           // Perform upkeep
-          const checkUpkeep = await cmpDeployment.cacheManagerProxy.checkUpkeep(
-            '0x'
-          );
-          await cmpDeployment.cacheManagerProxy.performUpkeep(
+          const checkUpkeep =
+            await cmaDeployment.cacheManagerAutomation.checkUpkeep('0x');
+          await cmaDeployment.cacheManagerAutomation.performUpkeep(
             checkUpkeep.performData
           );
 
           // Get updated contract config
           const updatedContracts =
-            await cmpDeployment.cacheManagerProxy.getUserContracts(
-              await cmpDeployment.owner.getAddress()
+            await cmaDeployment.cacheManagerAutomation.getUserContracts(
+              await cmaDeployment.owner.getAddress()
             );
           const updatedContract = updatedContracts.find(
             (c) => c.contractAddress === contractAddress
@@ -1288,7 +1292,7 @@ describe('CacheManagerProxy', async function () {
           const maxBid = hre.ethers.parseEther('0.3');
           const biddingFunds = hre.ethers.parseEther('1');
 
-          await cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
+          await cmaDeployment.cacheManagerAutomation.insertOrUpdateContract(
             contractAddress,
             maxBid,
             true,
@@ -1297,30 +1301,30 @@ describe('CacheManagerProxy', async function () {
 
           // First upkeep to cache the contract
           const firstCheckUpkeep =
-            await cmpDeployment.cacheManagerProxy.checkUpkeep('0x');
-          await cmpDeployment.cacheManagerProxy.performUpkeep(
+            await cmaDeployment.cacheManagerAutomation.checkUpkeep('0x');
+          await cmaDeployment.cacheManagerAutomation.performUpkeep(
             firstCheckUpkeep.performData
           );
 
           // Get balance after first upkeep
           const balanceAfterFirstUpkeep =
-            await cmpDeployment.cacheManagerProxy.getUserBalance();
+            await cmaDeployment.cacheManagerAutomation.getUserBalance();
 
           // Second upkeep should not place any bids
           const secondCheckUpkeep =
-            await cmpDeployment.cacheManagerProxy.checkUpkeep('0x');
+            await cmaDeployment.cacheManagerAutomation.checkUpkeep('0x');
 
           // If no contracts need upkeep, the upkeepNeeded flag should be false
           expect(secondCheckUpkeep.upkeepNeeded).to.be.false;
 
           // Even if we force performUpkeep, no bids should be placed
-          await cmpDeployment.cacheManagerProxy.performUpkeep(
+          await cmaDeployment.cacheManagerAutomation.performUpkeep(
             firstCheckUpkeep.performData
           );
 
           // Balance should remain unchanged after second upkeep
           const balanceAfterSecondUpkeep =
-            await cmpDeployment.cacheManagerProxy.getUserBalance();
+            await cmaDeployment.cacheManagerAutomation.getUserBalance();
           expect(balanceAfterSecondUpkeep).to.equal(balanceAfterFirstUpkeep);
         });
 
@@ -1335,7 +1339,7 @@ describe('CacheManagerProxy', async function () {
 
           // Register multiple contracts
           for (const contractAddress of contractAddresses) {
-            await cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
+            await cmaDeployment.cacheManagerAutomation.insertOrUpdateContract(
               contractAddress,
               maxBid,
               true,
@@ -1352,7 +1356,7 @@ describe('CacheManagerProxy', async function () {
             );
 
           // Perform upkeep with limited performData
-          await cmpDeployment.cacheManagerProxy.performUpkeep(
+          await cmaDeployment.cacheManagerAutomation.performUpkeep(
             limitedPerformData
           );
 
@@ -1375,30 +1379,30 @@ describe('CacheManagerProxy', async function () {
     describe('Pause/Unpause', function () {
       it('Should allow owner to pause and unpause the contract', async function () {
         // Pause the contract
-        await cmpDeployment.cacheManagerProxy
-          .connect(cmpDeployment.owner)
+        await cmaDeployment.cacheManagerAutomation
+          .connect(cmaDeployment.owner)
           .pause();
-        expect(await cmpDeployment.cacheManagerProxy.paused()).to.be.true;
+        expect(await cmaDeployment.cacheManagerAutomation.paused()).to.be.true;
 
         // Unpause the contract
-        await cmpDeployment.cacheManagerProxy
-          .connect(cmpDeployment.owner)
+        await cmaDeployment.cacheManagerAutomation
+          .connect(cmaDeployment.owner)
           .unpause();
-        expect(await cmpDeployment.cacheManagerProxy.paused()).to.be.false;
+        expect(await cmaDeployment.cacheManagerAutomation.paused()).to.be.false;
       });
 
       it('Should prevent non-owners from pausing the contract', async function () {
         const [_, nonOwner] = await hre.ethers.getSigners();
 
         await expect(
-          cmpDeployment.cacheManagerProxy.connect(nonOwner).pause()
+          cmaDeployment.cacheManagerAutomation.connect(nonOwner).pause()
         ).to.be.revertedWith('Ownable: caller is not the owner');
       });
 
       it('Should prevent operations when paused', async function () {
         // Pause the contract
-        await cmpDeployment.cacheManagerProxy
-          .connect(cmpDeployment.owner)
+        await cmaDeployment.cacheManagerAutomation
+          .connect(cmaDeployment.owner)
           .pause();
 
         // Try to perform operations
@@ -1406,29 +1410,29 @@ describe('CacheManagerProxy', async function () {
         const maxBid = hre.ethers.parseEther('0.001');
 
         await expect(
-          cmpDeployment.cacheManagerProxy.insertOrUpdateContract(
+          cmaDeployment.cacheManagerAutomation.insertOrUpdateContract(
             contractAddress,
             maxBid,
             true,
             { value: hre.ethers.parseEther('0.01') }
           )
         ).to.be.revertedWithCustomError(
-          cmpDeployment.cacheManagerProxy,
+          cmaDeployment.cacheManagerAutomation,
           'ContractPaused'
         );
 
         await expect(
-          cmpDeployment.cacheManagerProxy.fundBalance({
+          cmaDeployment.cacheManagerAutomation.fundBalance({
             value: hre.ethers.parseEther('0.01'),
           })
         ).to.be.revertedWithCustomError(
-          cmpDeployment.cacheManagerProxy,
+          cmaDeployment.cacheManagerAutomation,
           'ContractPaused'
         );
 
         // Unpause for other tests
-        await cmpDeployment.cacheManagerProxy
-          .connect(cmpDeployment.owner)
+        await cmaDeployment.cacheManagerAutomation
+          .connect(cmaDeployment.owner)
           .unpause();
       });
     });
@@ -1437,25 +1441,25 @@ describe('CacheManagerProxy', async function () {
       it('Should allow owner to emergency withdraw funds', async function () {
         // Fund the contract
         const fundAmount = hre.ethers.parseEther('1.0');
-        await cmpDeployment.cacheManagerProxy.fundBalance({
+        await cmaDeployment.cacheManagerAutomation.fundBalance({
           value: fundAmount,
         });
 
         // Check owner's balance before emergency withdraw
         const ownerBalanceBefore = await hre.ethers.provider.getBalance(
-          await cmpDeployment.owner.getAddress()
+          await cmaDeployment.owner.getAddress()
         );
 
         // Perform emergency withdraw
-        const tx = await cmpDeployment.cacheManagerProxy
-          .connect(cmpDeployment.owner)
+        const tx = await cmaDeployment.cacheManagerAutomation
+          .connect(cmaDeployment.owner)
           .emergencyWithdraw();
         const receipt = await tx.wait();
         const gasUsed = receipt ? receipt.gasUsed * receipt.gasPrice : 0n;
 
         // Check owner's balance after emergency withdraw
         const ownerBalanceAfter = await hre.ethers.provider.getBalance(
-          await cmpDeployment.owner.getAddress()
+          await cmaDeployment.owner.getAddress()
         );
 
         // Verify owner's balance increased by the expected amount (accounting for gas)
@@ -1469,7 +1473,9 @@ describe('CacheManagerProxy', async function () {
         const [_, nonOwner] = await hre.ethers.getSigners();
 
         await expect(
-          cmpDeployment.cacheManagerProxy.connect(nonOwner).emergencyWithdraw()
+          cmaDeployment.cacheManagerAutomation
+            .connect(nonOwner)
+            .emergencyWithdraw()
         ).to.be.revertedWith('Ownable: caller is not the owner');
       });
     });
@@ -1480,18 +1486,18 @@ describe('CacheManagerProxy', async function () {
       const nonExistentContract = hre.ethers.Wallet.createRandom().address;
 
       await expect(
-        cmpDeployment.cacheManagerProxy.removeContract(nonExistentContract)
+        cmaDeployment.cacheManagerAutomation.removeContract(nonExistentContract)
       ).to.be.revertedWithCustomError(
-        cmpDeployment.cacheManagerProxy,
+        cmaDeployment.cacheManagerAutomation,
         'ContractNotFound'
       );
     });
 
     it('Should handle removing all contracts when none exist', async function () {
       await expect(
-        cmpDeployment.cacheManagerProxy.removeAllContracts()
+        cmaDeployment.cacheManagerAutomation.removeAllContracts()
       ).to.be.revertedWithCustomError(
-        cmpDeployment.cacheManagerProxy,
+        cmaDeployment.cacheManagerAutomation,
         'ContractNotFound'
       );
     });
@@ -1502,13 +1508,13 @@ describe('CacheManagerProxy', async function () {
 
       // Send ETH directly to the contract
       await sender.sendTransaction({
-        to: await cmpDeployment.cacheManagerProxy.getAddress(),
+        to: await cmaDeployment.cacheManagerAutomation.getAddress(),
         value: amount,
       });
 
       // Check contract balance
       const contractBalance = await hre.ethers.provider.getBalance(
-        await cmpDeployment.cacheManagerProxy.getAddress()
+        await cmaDeployment.cacheManagerAutomation.getAddress()
       );
       expect(contractBalance).to.be.at.least(amount);
     });
