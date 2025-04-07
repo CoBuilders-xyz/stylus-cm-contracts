@@ -31,7 +31,10 @@ interface ICacheManagerAutomation {
     event BidPlaced(
         address indexed user,
         address indexed contractAddress,
-        uint256 bidAmount
+        uint256 bidAmount,
+        uint256 minBid,
+        uint256 maxBid,
+        uint256 userBalance
     );
     event ContractRemoved(
         address indexed user,
@@ -67,6 +70,8 @@ interface ICacheManagerAutomation {
         uint256 userBalance,
         bool success
     );
+    event MinBidCheck(address indexed contractAddress, uint256 minBid);
+
     event UpkeepPerformed(
         uint256 totalContracts,
         uint256 successfulBids,

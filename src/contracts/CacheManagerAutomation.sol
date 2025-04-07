@@ -177,7 +177,14 @@ contract CacheManagerAutomation is
         try cacheManager.placeBid{value: _bid}(_contract) {
             success = true;
             user.balance -= _bid;
-            emit BidPlaced(msg.sender, _contract, _bid);
+            emit BidPlaced(
+                msg.sender,
+                _contract,
+                _bid,
+                minBid,
+                maxBid,
+                user.balance
+            );
         } catch {
             // Handle the error
             emit BidError(msg.sender, _contract, _bid, "Bid placement failed");
@@ -289,7 +296,8 @@ contract CacheManagerAutomation is
 
                 // Get current minimum bid
                 uint192 minBid = cacheManager.getMinBid(contractAddress);
-                uint192 bidAmount = minBid;
+                emit MinBidCheck(contractAddress, minBid);
+                uint192 bidAmount = minBid + 1;
 
                 if (
                     bidAmount <= contracts[i].maxBid &&
@@ -301,7 +309,14 @@ contract CacheManagerAutomation is
                         userData.balance -= bidAmount;
                         contracts[i].lastBid = bidAmount;
                         successfulBids++;
-                        emit BidPlaced(user, contractAddress, bidAmount);
+                        emit BidPlaced(
+                            user,
+                            contractAddress,
+                            bidAmount,
+                            minBid,
+                            contracts[i].maxBid,
+                            userData.balance
+                        );
 
                         // Get the new minimum bid after successful bid placement
                         minBid = cacheManager.getMinBid(contractAddress);

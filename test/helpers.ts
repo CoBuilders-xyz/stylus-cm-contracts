@@ -170,7 +170,7 @@ export async function getMinBid(contractAddress: string) {
  */
 export async function fillCacheWithBids(
   contracts: string[],
-  bidAmount: string = '0.1'
+  bidAmount: string = '0.01'
 ) {
   const cacheManagerAddress = hre.ethers.getAddress(
     process.env.CACHE_MANAGER_ADDRESS || '0x'
@@ -189,11 +189,16 @@ export async function fillCacheWithBids(
 
   for (const contractAddress of contracts) {
     try {
+      console.log(`Placing bid for contract ${contractAddress}`);
       await cacheManager.placeBid(contractAddress, { value: bid });
     } catch (error) {
       if (error instanceof Error && error.message.includes('AlreadyCached')) {
         console.log(`Contract ${contractAddress} is already cached`);
       } else {
+        console.error(
+          `Error placing bid for contract ${contractAddress}:`,
+          error
+        );
         break; // Stop the loop since cache is full.
       }
     }

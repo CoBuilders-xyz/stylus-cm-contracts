@@ -90,8 +90,15 @@ export class CacheManagerMonitor {
     this.contract.on('BidPlaced', async (...args) => {
       this.log('BidPlaced event received:', ...args);
       try {
-        const [user, contract, bidAmount] = args;
-        await this.processBidPlacedEvent(user, contract, bidAmount);
+        const [user, contract, bidAmount, minBid, maxBid, balance] = args;
+        await this.processBidPlacedEvent(
+          user,
+          contract,
+          bidAmount,
+          minBid,
+          maxBid,
+          balance
+        );
       } catch (error) {
         this.logError('Error processing BidPlaced event:', error);
       }
@@ -114,6 +121,16 @@ export class CacheManagerMonitor {
         await this.processBidAttemptedEvent(user, contract, bidAmount, success);
       } catch (error) {
         this.logError('Error processing BidAttempted event:', error);
+      }
+    });
+
+    this.contract.on('MinBidCheck', async (...args) => {
+      this.log('MinBidCheck event received:', ...args);
+      try {
+        const [contract, minBid] = args;
+        await this.processMinBidCheckEvent(contract, minBid);
+      } catch (error) {
+        this.logError('Error processing MinBidCheck event:', error);
       }
     });
 
@@ -158,6 +175,13 @@ export class CacheManagerMonitor {
         timestamp DATETIME
       );
 
+      CREATE TABLE IF NOT EXISTS min_bid_checks (
+        test_id TEXT,
+        contract TEXT,
+        min_bid TEXT,
+        timestamp DATETIME
+      );
+
       CREATE TABLE IF NOT EXISTS upkeeps (
         test_id TEXT,
         total_contracts TEXT,
@@ -181,6 +205,7 @@ export class CacheManagerMonitor {
     console.log('Clearing database...');
     await this.db.exec(`
       DROP TABLE IF EXISTS bids;
+      DROP TABLE IF EXISTS min_bid_checks;
       DROP TABLE IF EXISTS upkeeps;
       DROP TABLE IF EXISTS balance_operations;
     `);
@@ -314,7 +339,10 @@ export class CacheManagerMonitor {
   private async processBidPlacedEvent(
     user: string,
     contract: string,
-    bidAmount: bigint
+    bidAmount: bigint,
+    minBid: bigint,
+    maxBid: bigint,
+    balance: bigint
   ) {
     this.log(`Processing BidPlaced event for test ${this.testId}`);
     try {
@@ -322,15 +350,20 @@ export class CacheManagerMonitor {
         await this.initDB(false);
       }
 
+      console.log();
+
       const query = `
-        INSERT INTO bids (test_id, user, contract, bid_amount, success, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?)`;
+        INSERT INTO bids (test_id, user, contract, bid_amount, min_bid, max_bid, balance, success, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
       const params = [
         this.testId,
         user,
         contract,
         bidAmount.toString(),
+        minBid.toString(),
+        maxBid.toString(),
+        balance.toString(),
         1, // success is true for BidPlaced events
         new Date().toISOString(),
       ];
@@ -404,6 +437,34 @@ export class CacheManagerMonitor {
       this.log('BidAttempted event stored successfully in database');
     } catch (error) {
       this.logError('Error storing BidAttempted event:', error);
+    }
+  }
+
+  private async processMinBidCheckEvent(
+    contractAddress: string,
+    minBid: bigint
+  ) {
+    this.log(`Processing MinBidCheck event for test ${this.testId}`);
+    try {
+      if (!this.db) {
+        await this.initDB(false);
+      }
+
+      const query = `
+        INSERT INTO min_bid_checks (test_id, contract, min_bid, timestamp)
+        VALUES (?, ?, ?, ?)`;
+
+      const params = [
+        this.testId,
+        contractAddress,
+        minBid.toString(),
+        new Date().toISOString(),
+      ];
+
+      await this.db.run(query, params);
+      this.log('MinBidCheck event stored successfully in database');
+    } catch (error) {
+      this.logError('Error storing MinBidCheck event:', error);
     }
   }
 

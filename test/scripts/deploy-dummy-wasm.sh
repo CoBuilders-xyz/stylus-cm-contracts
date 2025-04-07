@@ -1,7 +1,49 @@
 #!/bin/bash
 # Run from repo root folder
 
-source .env
+# Default values
+ENV_FILE=".env"
+ITERATIONS=5
+
+# Show usage information
+function show_usage {
+    echo "Usage: $0 [OPTIONS]"
+    echo "Options:"
+    echo "  -e, --env FILE      Path to the environment file (default: .env)"
+    echo "  -i, --iterations N  Number of iterations (default: 5)"
+    echo "  -h, --help          Show this help message"
+    exit 1
+}
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -e|--env)
+            ENV_FILE="$2"
+            shift 2
+            ;;
+        -i|--iterations)
+            ITERATIONS="$2"
+            shift 2
+            ;;
+        -h|--help)
+            show_usage
+            ;;
+        *)
+            echo "Unknown option: $1"
+            show_usage
+            ;;
+    esac
+done
+
+# Check if env file exists
+if [ ! -f "$ENV_FILE" ]; then
+    echo "Error: Environment file '$ENV_FILE' not found!"
+    exit 1
+fi
+
+# Source the environment file
+source "$ENV_FILE"
 
 # Move to contract folder
 cd test/mock-wasm-contracts/mock-contract
@@ -9,9 +51,8 @@ cd test/mock-wasm-contracts/mock-contract
 # Define the Rust source file
 CLEAN_RUST_FILE="src/clean_lib.rs"
 RUST_FILE="src/lib.rs"
-ITERATIONS=${1:-5}  # Set the number of iterations
 
-# Guarantee cleen start
+# Guarantee clean start
 cp $CLEAN_RUST_FILE $RUST_FILE
 DUMMY_OLD="dummy"
 for ((i=1; i<=ITERATIONS; i++)); do
@@ -28,5 +69,5 @@ for ((i=1; i<=ITERATIONS; i++)); do
     
     DUMMY_OLD=$DUMMY_NEW
 done
-# # Restore the original function name
+# Restore the original function name
 cp $CLEAN_RUST_FILE $RUST_FILE
