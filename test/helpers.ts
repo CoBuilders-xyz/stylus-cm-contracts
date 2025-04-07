@@ -78,7 +78,7 @@ export async function deployDummyWASMContracts(): Promise<string[]> {
       );
     }
     const { stdout, stderr } = await execPromise(
-      `bash test/scripts/deploy-dummy-wasm.sh ${dummyContractsAmount}`
+      `bash test/scripts/deploy-dummy-wasm.sh -e .env -i ${dummyContractsAmount}`
     );
 
     if (stderr) {
