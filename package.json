@@ -4,7 +4,8 @@
   "description": "",
   "main": "",
   "scripts": {
-    "test": "npx hardhat test test/CacheManagerAutomation.ts --network localArb"
+    "testCMA": "npx hardhat test test/CacheManagerAutomation.test.ts --network localArb",
+    "testCM": "npx hardhat test test/CacheManager.test.ts --network localArb"
   },
   "repository": {
     "type": "git",
