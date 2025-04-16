@@ -1015,6 +1015,7 @@ describe('cacheManagerAutomation', async function () {
               checkUpkeep.performData
             )
           ).to.emit(cmaDeployment.cacheManagerAutomation, 'BidPlaced');
+
           // Verify results
           const finalBalance =
             await cmaDeployment.cacheManagerAutomation.getUserBalance();
