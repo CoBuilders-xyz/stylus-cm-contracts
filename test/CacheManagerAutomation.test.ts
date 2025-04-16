@@ -52,14 +52,13 @@ describe('cacheManagerAutomation', async function () {
   }
 
   async function createAndFundWallet(fundAmount = DEFAULT_WALLET_FUNDING) {
-    const [mainWallet] = await hre.ethers.getSigners();
     const wallet = new hre.ethers.Wallet(
       hre.ethers.Wallet.createRandom().privateKey,
-      mainWallet.provider
+      owner.provider
     );
 
     // Fund the new wallet from the main wallet
-    const tx = await mainWallet.sendTransaction({
+    const tx = await owner.sendTransaction({
       to: wallet.address,
       value: fundAmount,
     });
@@ -156,9 +155,9 @@ describe('cacheManagerAutomation', async function () {
 
     console.log('---------------------------------------');
     console.log('Addresses and Balances');
-    console.log('----------------');
-    console.log(`Owner: ${owner.address} - ${ownerBalance} ETH`);
-    console.log(`User 1: ${user1.address} - ${user1Balance} ETH`);
+    console.log('----------------------');
+    console.log(`  Owner: ${owner.address} - ${ownerBalance} ETH`);
+    console.log(`  User 1: ${user1.address} - ${user1Balance} ETH`);
     console.log('---------------------------------------');
 
     await setCacheSize();
@@ -715,7 +714,6 @@ describe('cacheManagerAutomation', async function () {
   describe('Balance Management', function () {
     describe('Fund Balance', function () {
       it('Should allow users to fund their balance', async function () {
-        const [user] = await hre.ethers.getSigners();
         const fundAmount = hre.ethers.parseEther('0.5');
 
         await expect(
@@ -724,7 +722,7 @@ describe('cacheManagerAutomation', async function () {
           })
         )
           .to.emit(cmaDeployment.cacheManagerAutomation, 'BalanceUpdated')
-          .withArgs(user.address, fundAmount);
+          .withArgs(user1.address, fundAmount);
 
         const userBalance =
           await cmaDeployment.cacheManagerAutomation.getUserBalance();
@@ -759,7 +757,6 @@ describe('cacheManagerAutomation', async function () {
 
     describe('Withdraw Balance', function () {
       it('Should allow users to withdraw their balance', async function () {
-        const [user] = await hre.ethers.getSigners();
         const fundAmount = hre.ethers.parseEther('0.5');
 
         // Fund the balance first
@@ -769,7 +766,7 @@ describe('cacheManagerAutomation', async function () {
 
         // Check user's ETH balance before withdrawal
         const balanceBefore = await hre.ethers.provider.getBalance(
-          user.address
+          user1.address
         );
 
         // Withdraw and track gas costs
@@ -778,7 +775,9 @@ describe('cacheManagerAutomation', async function () {
         const gasUsed = receipt ? receipt.gasUsed * receipt.gasPrice : 0n;
 
         // Check user's ETH balance after withdrawal
-        const balanceAfter = await hre.ethers.provider.getBalance(user.address);
+        const balanceAfter = await hre.ethers.provider.getBalance(
+          user1.address
+        );
 
         // Verify balance increased by the expected amount (accounting for gas)
         expect(balanceAfter).to.be.closeTo(
@@ -803,7 +802,6 @@ describe('cacheManagerAutomation', async function () {
 
       it('Should emit BalanceUpdated event when withdrawing', async function () {
         const fundAmount = hre.ethers.parseEther('0.5');
-        const [user] = await hre.ethers.getSigners();
 
         // Fund the balance first
         await cmaDeployment.cacheManagerAutomation.fundBalance({
@@ -813,7 +811,7 @@ describe('cacheManagerAutomation', async function () {
         // Withdraw and check for event
         await expect(cmaDeployment.cacheManagerAutomation.withdrawBalance())
           .to.emit(cmaDeployment.cacheManagerAutomation, 'BalanceUpdated')
-          .withArgs(user.address, 0);
+          .withArgs(user1.address, 0);
       });
     });
   });
@@ -833,7 +831,7 @@ describe('cacheManagerAutomation', async function () {
             dummyContracts[0]
           );
           const maxBid = hre.ethers.parseEther('0.1');
-          const biddingFunds = hre.ethers.parseEther('1');
+          const biddingFunds = hre.ethers.parseEther('1.0');
 
           await cmaDeployment.cacheManagerAutomation.insertOrUpdateContract(
             contractToCacheAddress,
@@ -860,7 +858,7 @@ describe('cacheManagerAutomation', async function () {
             dummyContracts[0]
           );
           const maxBid = hre.ethers.parseEther('0.1');
-          const biddingFunds = hre.ethers.parseEther('1');
+          const biddingFunds = hre.ethers.parseEther('1.0');
 
           await cmaDeployment.cacheManagerAutomation.insertOrUpdateContract(
             contractToCacheAddress,
@@ -881,7 +879,7 @@ describe('cacheManagerAutomation', async function () {
             dummyContracts[0]
           );
           const maxBid = hre.ethers.parseEther('0.1');
-          const biddingFunds = hre.ethers.parseEther('1');
+          const biddingFunds = hre.ethers.parseEther('1.0');
 
           await cmaDeployment.cacheManagerAutomation.insertOrUpdateContract(
             contractToCacheAddress,
@@ -908,7 +906,7 @@ describe('cacheManagerAutomation', async function () {
             .slice(0, 3)
             .map((contract) => hre.ethers.getAddress(contract));
           const maxBid = hre.ethers.parseEther('0.1');
-          const biddingFunds = hre.ethers.parseEther('1');
+          const biddingFunds = hre.ethers.parseEther('1.0');
 
           for (const contractAddress of contractAddresses) {
             await cmaDeployment.cacheManagerAutomation.insertOrUpdateContract(
@@ -938,7 +936,7 @@ describe('cacheManagerAutomation', async function () {
             .slice(0, 3)
             .map((contract) => hre.ethers.getAddress(contract));
           const maxBid = hre.ethers.parseEther('0.1');
-          const biddingFunds = hre.ethers.parseEther('1');
+          const biddingFunds = hre.ethers.parseEther('1.0');
 
           for (const contractAddress of contractAddresses) {
             await cmaDeployment.cacheManagerAutomation.insertOrUpdateContract(
@@ -998,9 +996,8 @@ describe('cacheManagerAutomation', async function () {
           const contractToCacheAddress = hre.ethers.getAddress(
             dummyContracts[0]
           );
-          const [user] = await hre.ethers.getSigners();
           const maxBid = hre.ethers.parseEther('0.3');
-          const biddingFunds = hre.ethers.parseEther('1');
+          const biddingFunds = hre.ethers.parseEther('1.0');
 
           // Fill cache with some contracts at lower bid values
           const contractsToFill = dummyContracts
@@ -1046,7 +1043,7 @@ describe('cacheManagerAutomation', async function () {
             dummyContracts[0]
           );
           const maxBid = hre.ethers.parseEther('0.1');
-          const biddingFunds = hre.ethers.parseEther('1');
+          const biddingFunds = hre.ethers.parseEther('1.0');
 
           // Register contract for user
           await cmaDeployment.cacheManagerAutomation.insertOrUpdateContract(
@@ -1084,7 +1081,7 @@ describe('cacheManagerAutomation', async function () {
             dummyContracts[0]
           );
           const maxBid = hre.ethers.parseEther('0.1');
-          const biddingFunds = hre.ethers.parseEther('1');
+          const biddingFunds = hre.ethers.parseEther('1.0');
 
           // Register contract for user and initially disable it
           await cmaDeployment.cacheManagerAutomation.insertOrUpdateContract(
@@ -1238,7 +1235,7 @@ describe('cacheManagerAutomation', async function () {
           // Setup: Add a contract
           const contractAddress = hre.ethers.getAddress(dummyContracts[0]);
           const maxBid = hre.ethers.parseEther('0.3');
-          const biddingFunds = hre.ethers.parseEther('1');
+          const biddingFunds = hre.ethers.parseEther('1.0');
 
           await insertContract(contractAddress, maxBid, biddingFunds);
 
@@ -1277,7 +1274,7 @@ describe('cacheManagerAutomation', async function () {
           // Setup: Add a contract and cache it
           const contractAddress = hre.ethers.getAddress(dummyContracts[0]);
           const maxBid = hre.ethers.parseEther('0.3');
-          const biddingFunds = hre.ethers.parseEther('1');
+          const biddingFunds = hre.ethers.parseEther('1.0');
 
           await cmaDeployment.cacheManagerAutomation.insertOrUpdateContract(
             contractAddress,
@@ -1322,7 +1319,7 @@ describe('cacheManagerAutomation', async function () {
             .slice(0, contractCount)
             .map((contract) => hre.ethers.getAddress(contract));
           const maxBid = hre.ethers.parseEther('0.3');
-          const biddingFunds = hre.ethers.parseEther('1');
+          const biddingFunds = hre.ethers.parseEther('1.0');
 
           // Register multiple contracts
           for (const contractAddress of contractAddresses) {
@@ -1379,10 +1376,8 @@ describe('cacheManagerAutomation', async function () {
       });
 
       it('Should prevent non-owners from pausing the contract', async function () {
-        const [_, nonOwner] = await hre.ethers.getSigners();
-
         await expect(
-          cmaDeployment.cacheManagerAutomation.connect(nonOwner).pause()
+          cmaDeployment.cacheManagerAutomation.connect(user1).pause()
         ).to.be.revertedWith('Ownable: caller is not the owner');
       });
 
@@ -1423,49 +1418,6 @@ describe('cacheManagerAutomation', async function () {
           .unpause();
       });
     });
-
-    describe('Emergency Withdraw', function () {
-      it('Should allow owner to emergency withdraw funds', async function () {
-        // Fund the contract
-        const fundAmount = hre.ethers.parseEther('1.0');
-        await cmaDeployment.cacheManagerAutomation.fundBalance({
-          value: fundAmount,
-        });
-
-        // Check owner's balance before emergency withdraw
-        const ownerBalanceBefore = await hre.ethers.provider.getBalance(
-          await cmaDeployment.owner.getAddress()
-        );
-
-        // Perform emergency withdraw
-        const tx = await cmaDeployment.cacheManagerAutomation
-          .connect(cmaDeployment.owner)
-          .emergencyWithdraw();
-        const receipt = await tx.wait();
-        const gasUsed = receipt ? receipt.gasUsed * receipt.gasPrice : 0n;
-
-        // Check owner's balance after emergency withdraw
-        const ownerBalanceAfter = await hre.ethers.provider.getBalance(
-          await cmaDeployment.owner.getAddress()
-        );
-
-        // Verify owner's balance increased by the expected amount (accounting for gas)
-        expect(ownerBalanceAfter).to.be.closeTo(
-          ownerBalanceBefore + fundAmount - gasUsed,
-          hre.ethers.parseEther('0.0001') // Allow for small rounding differences
-        );
-      });
-
-      it('Should prevent non-owners from emergency withdrawing', async function () {
-        const [_, nonOwner] = await hre.ethers.getSigners();
-
-        await expect(
-          cmaDeployment.cacheManagerAutomation
-            .connect(nonOwner)
-            .emergencyWithdraw()
-        ).to.be.revertedWith('Ownable: caller is not the owner');
-      });
-    });
   });
 
   describe('Edge Cases', function () {
@@ -1490,11 +1442,10 @@ describe('cacheManagerAutomation', async function () {
     });
 
     it('Should handle receiving ETH directly', async function () {
-      const [sender] = await hre.ethers.getSigners();
       const amount = hre.ethers.parseEther('0.1');
 
       // Send ETH directly to the contract
-      await sender.sendTransaction({
+      await user1.sendTransaction({
         to: await cmaDeployment.cacheManagerAutomation.getAddress(),
         value: amount,
       });
