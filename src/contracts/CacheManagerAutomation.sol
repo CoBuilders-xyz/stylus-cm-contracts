@@ -45,7 +45,7 @@ contract CacheManagerAutomation is
     ICacheManager public cacheManager;
     IArbWasmCache public arbWasmCache;
 
-    mapping(address => UserConfig) public userConfig;
+    mapping(address => ContractConfig[]) public userContracts;
     EnumerableSet.AddressSet private userAddresses;
 
     // ------------------------------------------------------------------------
@@ -121,7 +121,7 @@ contract CacheManagerAutomation is
         if (_contract == address(0)) revert InvalidAddress();
         if (_maxBid < MIN_BID_AMOUNT) revert InvalidBid();
 
-        ContractConfig[] storage contracts = userConfig[msg.sender].contracts;
+        ContractConfig[] storage contracts = userContracts[msg.sender];
         if (contracts.length >= MAX_CONTRACTS_PER_USER)
             revert TooManyContracts();
 
@@ -159,7 +159,7 @@ contract CacheManagerAutomation is
 
     /// @notice Removes a contract from user's configuration
     function removeContract(address _contract) external {
-        ContractConfig[] storage contracts = userConfig[msg.sender].contracts;
+        ContractConfig[] storage contracts = userContracts[msg.sender];
         if (contracts.length == 0) revert ContractNotFound();
 
         bool found = false;
@@ -182,19 +182,19 @@ contract CacheManagerAutomation is
     }
 
     function removeAllContracts() external {
-        ContractConfig[] storage contracts = userConfig[msg.sender].contracts;
+        ContractConfig[] storage contracts = userContracts[msg.sender];
         uint256 length = contracts.length;
         if (length == 0) revert ContractNotFound();
 
         for (uint256 i = 0; i < length; i++) {
             emit ContractRemoved(msg.sender, contracts[i].contractAddress);
         }
-        delete userConfig[msg.sender].contracts;
+        delete userContracts[msg.sender];
         userAddresses.remove(msg.sender);
     }
 
     function setContractEnabled(address _contract, bool _enabled) external {
-        ContractConfig[] storage contracts = userConfig[msg.sender].contracts;
+        ContractConfig[] storage contracts = userContracts[msg.sender];
         for (uint256 i = 0; i < contracts.length; i++) {
             if (contracts[i].contractAddress == _contract) {
                 contracts[i].enabled = _enabled;
@@ -224,8 +224,7 @@ contract CacheManagerAutomation is
             u++
         ) {
             address user = users[u];
-            UserConfig storage userData = userConfig[user];
-            ContractConfig[] storage contracts = userData.contracts;
+            ContractConfig[] storage contracts = userContracts[user];
             uint256 userBalance = escrow.depositsOf(user);
 
             for (
@@ -311,7 +310,7 @@ contract CacheManagerAutomation is
         address[] memory users = userAddresses.values();
 
         for (uint256 u = 0; u < users.length; u++) {
-            ContractConfig[] memory contracts = userConfig[users[u]].contracts;
+            ContractConfig[] memory contracts = userContracts[users[u]];
             for (uint256 i = 0; i < contracts.length; i++) {
                 if (!_shouldBid(contracts[i])) continue;
                 totalContracts++;
@@ -339,7 +338,7 @@ contract CacheManagerAutomation is
         view
         returns (ContractConfig[] memory)
     {
-        return userConfig[msg.sender].contracts;
+        return userContracts[msg.sender];
     }
 
     function getUserBalance() external view returns (uint256) {

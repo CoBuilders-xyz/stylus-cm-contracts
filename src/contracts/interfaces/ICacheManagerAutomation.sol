@@ -12,11 +12,6 @@ interface ICacheManagerAutomation {
         bool enabled;
     }
 
-    struct UserConfig {
-        ContractConfig[] contracts;
-        uint256 balance;
-    }
-
     // Events
     event ContractAdded(
         address indexed user,
