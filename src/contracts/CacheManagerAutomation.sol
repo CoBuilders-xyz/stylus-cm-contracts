@@ -2,18 +2,18 @@
 pragma solidity 0.8.20;
 
 // Chainlink
-import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol";
+import {AutomationCompatibleInterface} from '@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol';
 
 // OpenZeppelin
-import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
-import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import {Initializable} from '@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol';
+import {UUPSUpgradeable} from '@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol';
+import {OwnableUpgradeable} from '@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol';
+import {ReentrancyGuardUpgradeable} from '@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol';
+import {EnumerableSet} from '@openzeppelin/contracts/utils/structs/EnumerableSet.sol';
 
 // Interfaces
-import "./interfaces/IExternalContracts.sol";
-import "./interfaces/ICacheManagerAutomation.sol";
+import './interfaces/IExternalContracts.sol';
+import './interfaces/ICacheManagerAutomation.sol';
 
 /// @title Cache Manager Automation
 /// @notice A automation contract that manages user bids for contract caching in the Stylus VM
@@ -107,8 +107,8 @@ contract CacheManagerAutomation is
 
     function emergencyWithdraw() external onlyOwner {
         uint256 balance = address(this).balance;
-        (bool success, ) = owner().call{value: balance}("");
-        require(success, "Transfer failed");
+        (bool success, ) = owner().call{value: balance}('');
+        require(success, 'Transfer failed');
     }
 
     // ------------------------------------------------------------------------
@@ -152,60 +152,6 @@ contract CacheManagerAutomation is
         _updateUserBalance(msg.sender, msg.value);
         userAddresses.add(msg.sender);
         emit ContractAdded(msg.sender, _contract, _maxBid);
-    }
-
-    /// @notice Places a bid for a contract
-    function placeBid(address _contract, uint192 _bid) internal whenNotPaused {
-        if (_contract == address(0)) revert InvalidAddress();
-
-        uint192 minBid = cacheManager.getMinBid(_contract);
-        if (_bid < minBid) revert InvalidBid();
-
-        UserConfig storage user = userConfig[msg.sender];
-        if (user.balance < _bid) revert InsufficientBalance();
-
-        uint256 maxBid = 0;
-        ContractConfig[] storage contracts = user.contracts;
-        for (uint256 i = 0; i < contracts.length; i++) {
-            if (contracts[i].contractAddress == _contract) {
-                maxBid = contracts[i].maxBid;
-                break;
-            }
-        }
-
-        bool success = false;
-        try cacheManager.placeBid{value: _bid}(_contract) {
-            success = true;
-            user.balance -= _bid;
-            emit BidPlaced(
-                msg.sender,
-                _contract,
-                _bid,
-                minBid,
-                maxBid,
-                user.balance
-            );
-        } catch {
-            // Handle the error
-            emit BidError(msg.sender, _contract, _bid, "Bid placement failed");
-        }
-
-        emit BidDetails(
-            msg.sender,
-            _contract,
-            _bid,
-            minBid,
-            maxBid,
-            user.balance,
-            success
-        );
-    }
-
-    function placeBidExternal(
-        address _contract,
-        uint192 _bid
-    ) external whenNotPaused {
-        placeBid(_contract, _bid);
     }
 
     /// @notice Updates user balance and emits event
@@ -297,7 +243,7 @@ contract CacheManagerAutomation is
                 // Get current minimum bid
                 uint192 minBid = cacheManager.getMinBid(contractAddress);
                 emit MinBidCheck(contractAddress, minBid);
-                uint192 bidAmount = minBid + 1;
+                uint192 bidAmount = minBid + 1; // TODO: Check why +1
 
                 if (
                     bidAmount <= contracts[i].maxBid &&
@@ -325,7 +271,7 @@ contract CacheManagerAutomation is
                             user,
                             contractAddress,
                             bidAmount,
-                            "Bid placement failed"
+                            'Bid placement failed'
                         );
                         failedBids++;
                     }
@@ -375,6 +321,7 @@ contract CacheManagerAutomation is
     function getUserContracts(
         address _user
     ) external view returns (ContractConfig[] memory) {
+        // TODO: Should this be owner only? Actually we should use msg.sender
         return userConfig[_user].contracts;
     }
 
@@ -391,8 +338,8 @@ contract CacheManagerAutomation is
         // Update balance before transfer to prevent reentrancy
         emit BalanceUpdated(msg.sender, 0);
 
-        (bool success, ) = msg.sender.call{value: amount}("");
-        if (!success) revert("Transfer failed");
+        (bool success, ) = msg.sender.call{value: amount}('');
+        if (!success) revert('Transfer failed');
     }
 
     function fundBalance() external payable whenNotPaused {

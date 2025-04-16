@@ -26,7 +26,7 @@ export interface CMADeployment {
  * the cache manager address, and the owner signer.
  */
 export async function deployCMA(): Promise<CMADeployment> {
-  const [owner] = await hre.ethers.getSigners();
+  const [owner, user1] = await hre.ethers.getSigners();
   const cacheManagerAddress = hre.ethers.getAddress(
     process.env.CACHE_MANAGER_ADDRESS || '0x'
   );
@@ -49,7 +49,7 @@ export async function deployCMA(): Promise<CMADeployment> {
   await upgradableProxy.waitForDeployment();
 
   return {
-    cacheManagerAutomation: upgradableProxy,
+    cacheManagerAutomation: upgradableProxy.connect(user1),
     cacheManagerAddress,
     arbWasmCacheAddress,
     owner,
