@@ -334,11 +334,12 @@ contract CacheManagerAutomation is
             minBid < config.lastBid;
     }
 
-    function getUserContracts(
-        address _user
-    ) external view returns (ContractConfig[] memory) {
-        // TODO: Should this be owner only? Actually we should use msg.sender
-        return userConfig[_user].contracts;
+    function getUserContracts()
+        external
+        view
+        returns (ContractConfig[] memory)
+    {
+        return userConfig[msg.sender].contracts;
     }
 
     function getUserBalance() external view returns (uint256) {
