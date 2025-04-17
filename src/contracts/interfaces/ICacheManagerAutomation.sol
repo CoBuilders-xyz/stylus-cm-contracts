@@ -12,11 +12,6 @@ interface ICacheManagerAutomation {
         bool enabled;
     }
 
-    struct UserConfig {
-        ContractConfig[] contracts;
-        uint256 balance;
-    }
-
     // Events
     event ContractAdded(
         address indexed user,
@@ -99,19 +94,15 @@ interface ICacheManagerAutomation {
     function pause() external;
     function unpause() external;
     function getUserAddresses() external view returns (address[] memory);
-    function emergencyWithdraw() external;
     function insertOrUpdateContract(
         address _contract,
         uint256 _maxBid,
         bool _enabled
     ) external payable;
-    function placeBidExternal(address _contract, uint192 _bid) external;
     function removeContract(address _contract) external;
     function removeAllContracts() external;
     function setContractEnabled(address _contract, bool _enabled) external;
-    function getUserContracts(
-        address _user
-    ) external view returns (ContractConfig[] memory);
+    function getUserContracts() external view returns (ContractConfig[] memory);
     function getUserBalance() external view returns (uint256);
     function withdrawBalance() external;
     function fundBalance() external payable;

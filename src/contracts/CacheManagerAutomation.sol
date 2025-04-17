@@ -2,18 +2,19 @@
 pragma solidity 0.8.20;
 
 // Chainlink
-import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol";
+import {AutomationCompatibleInterface} from '@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol';
 
 // OpenZeppelin
-import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
-import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import {Initializable} from '@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol';
+import {UUPSUpgradeable} from '@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol';
+import {OwnableUpgradeable} from '@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol';
+import {ReentrancyGuardUpgradeable} from '@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol';
+import {EnumerableSet} from '@openzeppelin/contracts/utils/structs/EnumerableSet.sol';
+import {BiddingEscrow} from './BiddingEscrow.sol';
 
 // Interfaces
-import "./interfaces/IExternalContracts.sol";
-import "./interfaces/ICacheManagerAutomation.sol";
+import './interfaces/IExternalContracts.sol';
+import './interfaces/ICacheManagerAutomation.sol';
 
 /// @title Cache Manager Automation
 /// @notice A automation contract that manages user bids for contract caching in the Stylus VM
@@ -26,6 +27,7 @@ contract CacheManagerAutomation is
     ReentrancyGuardUpgradeable
 {
     using EnumerableSet for EnumerableSet.AddressSet;
+    BiddingEscrow public escrow;
 
     // ------------------------------------------------------------------------
     // Constants
@@ -43,7 +45,7 @@ contract CacheManagerAutomation is
     ICacheManager public cacheManager;
     IArbWasmCache public arbWasmCache;
 
-    mapping(address => UserConfig) public userConfig;
+    mapping(address => ContractConfig[]) public userContracts;
     EnumerableSet.AddressSet private userAddresses;
 
     // ------------------------------------------------------------------------
@@ -72,6 +74,7 @@ contract CacheManagerAutomation is
 
         cacheManager = ICacheManager(_cacheManager);
         arbWasmCache = IArbWasmCache(_arbWasmCache);
+        escrow = new BiddingEscrow();
     }
 
     // @notice Required for UUPS upgrades
@@ -105,12 +108,6 @@ contract CacheManagerAutomation is
         return userAddresses.values();
     }
 
-    function emergencyWithdraw() external onlyOwner {
-        uint256 balance = address(this).balance;
-        (bool success, ) = owner().call{value: balance}("");
-        require(success, "Transfer failed");
-    }
-
     // ------------------------------------------------------------------------
     // Contract functions
     // ------------------------------------------------------------------------
@@ -124,7 +121,7 @@ contract CacheManagerAutomation is
         if (_contract == address(0)) revert InvalidAddress();
         if (_maxBid < MIN_BID_AMOUNT) revert InvalidBid();
 
-        ContractConfig[] storage contracts = userConfig[msg.sender].contracts;
+        ContractConfig[] storage contracts = userContracts[msg.sender];
         if (contracts.length >= MAX_CONTRACTS_PER_USER)
             revert TooManyContracts();
 
@@ -154,69 +151,15 @@ contract CacheManagerAutomation is
         emit ContractAdded(msg.sender, _contract, _maxBid);
     }
 
-    /// @notice Places a bid for a contract
-    function placeBid(address _contract, uint192 _bid) internal whenNotPaused {
-        if (_contract == address(0)) revert InvalidAddress();
-
-        uint192 minBid = cacheManager.getMinBid(_contract);
-        if (_bid < minBid) revert InvalidBid();
-
-        UserConfig storage user = userConfig[msg.sender];
-        if (user.balance < _bid) revert InsufficientBalance();
-
-        uint256 maxBid = 0;
-        ContractConfig[] storage contracts = user.contracts;
-        for (uint256 i = 0; i < contracts.length; i++) {
-            if (contracts[i].contractAddress == _contract) {
-                maxBid = contracts[i].maxBid;
-                break;
-            }
-        }
-
-        bool success = false;
-        try cacheManager.placeBid{value: _bid}(_contract) {
-            success = true;
-            user.balance -= _bid;
-            emit BidPlaced(
-                msg.sender,
-                _contract,
-                _bid,
-                minBid,
-                maxBid,
-                user.balance
-            );
-        } catch {
-            // Handle the error
-            emit BidError(msg.sender, _contract, _bid, "Bid placement failed");
-        }
-
-        emit BidDetails(
-            msg.sender,
-            _contract,
-            _bid,
-            minBid,
-            maxBid,
-            user.balance,
-            success
-        );
-    }
-
-    function placeBidExternal(
-        address _contract,
-        uint192 _bid
-    ) external whenNotPaused {
-        placeBid(_contract, _bid);
-    }
-
     /// @notice Updates user balance and emits event
     function _updateUserBalance(address user, uint256 amount) internal {
-        userConfig[user].balance += amount;
-        emit BalanceUpdated(user, userConfig[user].balance);
+        escrow.deposit{value: amount}(user);
+        emit BalanceUpdated(user, escrow.depositsOf(user));
     }
 
     /// @notice Removes a contract from user's configuration
     function removeContract(address _contract) external {
-        ContractConfig[] storage contracts = userConfig[msg.sender].contracts;
+        ContractConfig[] storage contracts = userContracts[msg.sender];
         if (contracts.length == 0) revert ContractNotFound();
 
         bool found = false;
@@ -239,19 +182,19 @@ contract CacheManagerAutomation is
     }
 
     function removeAllContracts() external {
-        ContractConfig[] storage contracts = userConfig[msg.sender].contracts;
+        ContractConfig[] storage contracts = userContracts[msg.sender];
         uint256 length = contracts.length;
         if (length == 0) revert ContractNotFound();
 
         for (uint256 i = 0; i < length; i++) {
             emit ContractRemoved(msg.sender, contracts[i].contractAddress);
         }
-        delete userConfig[msg.sender].contracts;
+        delete userContracts[msg.sender];
         userAddresses.remove(msg.sender);
     }
 
     function setContractEnabled(address _contract, bool _enabled) external {
-        ContractConfig[] storage contracts = userConfig[msg.sender].contracts;
+        ContractConfig[] storage contracts = userContracts[msg.sender];
         for (uint256 i = 0; i < contracts.length; i++) {
             if (contracts[i].contractAddress == _contract) {
                 contracts[i].enabled = _enabled;
@@ -281,8 +224,8 @@ contract CacheManagerAutomation is
             u++
         ) {
             address user = users[u];
-            UserConfig storage userData = userConfig[user];
-            ContractConfig[] storage contracts = userData.contracts;
+            ContractConfig[] storage contracts = userContracts[user];
+            uint256 userBalance = escrow.depositsOf(user);
 
             for (
                 uint256 i = 0;
@@ -297,37 +240,54 @@ contract CacheManagerAutomation is
                 // Get current minimum bid
                 uint192 minBid = cacheManager.getMinBid(contractAddress);
                 emit MinBidCheck(contractAddress, minBid);
-                uint192 bidAmount = minBid + 1;
+                uint192 bidAmount = minBid + 1; // TODO: Check why +1
 
                 if (
-                    bidAmount <= contracts[i].maxBid &&
-                    userData.balance >= bidAmount
+                    bidAmount <= contracts[i].maxBid && userBalance >= bidAmount
                 ) {
-                    try
-                        cacheManager.placeBid{value: bidAmount}(contractAddress)
-                    {
-                        userData.balance -= bidAmount;
-                        contracts[i].lastBid = bidAmount;
-                        successfulBids++;
-                        emit BidPlaced(
-                            user,
-                            contractAddress,
-                            bidAmount,
-                            minBid,
-                            contracts[i].maxBid,
-                            userData.balance
-                        );
+                    // Withdraw bid amount from escrow
+                    try escrow.withdrawForBid(payable(user), bidAmount) {
+                        // Check if bid amount is within max bid and user balance
+                        // Place bid
+                        try
+                            cacheManager.placeBid{value: bidAmount}(
+                                contractAddress
+                            )
+                        {
+                            contracts[i].lastBid = bidAmount;
+                            successfulBids++;
+                            emit BidPlaced(
+                                user,
+                                contractAddress,
+                                bidAmount,
+                                minBid,
+                                contracts[i].maxBid,
+                                userBalance
+                            );
 
-                        // Get the new minimum bid after successful bid placement
-                        minBid = cacheManager.getMinBid(contractAddress);
+                            // Get the new minimum bid after successful bid placement
+                            minBid = cacheManager.getMinBid(contractAddress);
+                        } catch {
+                            // Return bid amount to user if bid placement fails
+                            escrow.deposit{value: bidAmount}(user);
+
+                            emit BidError(
+                                user,
+                                contractAddress,
+                                bidAmount,
+                                'Bid placement failed'
+                            );
+                            failedBids++;
+                        }
                     } catch {
                         emit BidError(
                             user,
                             contractAddress,
                             bidAmount,
-                            "Bid placement failed"
+                            'Escrow withdrawal failed'
                         );
                         failedBids++;
+                        break;
                     }
                 } else {
                     failedBids++;
@@ -349,7 +309,7 @@ contract CacheManagerAutomation is
         address[] memory users = userAddresses.values();
 
         for (uint256 u = 0; u < users.length; u++) {
-            ContractConfig[] memory contracts = userConfig[users[u]].contracts;
+            ContractConfig[] memory contracts = userContracts[users[u]];
             for (uint256 i = 0; i < contracts.length; i++) {
                 if (!_shouldBid(contracts[i])) continue;
                 totalContracts++;
@@ -372,27 +332,25 @@ contract CacheManagerAutomation is
             minBid < config.lastBid;
     }
 
-    function getUserContracts(
-        address _user
-    ) external view returns (ContractConfig[] memory) {
-        return userConfig[_user].contracts;
+    function getUserContracts()
+        external
+        view
+        returns (ContractConfig[] memory)
+    {
+        return userContracts[msg.sender];
     }
 
     function getUserBalance() external view returns (uint256) {
-        return userConfig[msg.sender].balance;
+        return escrow.depositsOf(msg.sender);
     }
 
     function withdrawBalance() external nonReentrant whenNotPaused {
-        uint256 amount = userConfig[msg.sender].balance;
+        uint256 amount = escrow.depositsOf(msg.sender);
         if (amount == 0) revert InsufficientBalance();
 
-        userConfig[msg.sender].balance = 0;
-
-        // Update balance before transfer to prevent reentrancy
         emit BalanceUpdated(msg.sender, 0);
 
-        (bool success, ) = msg.sender.call{value: amount}("");
-        if (!success) revert("Transfer failed");
+        escrow.withdraw(payable(msg.sender));
     }
 
     function fundBalance() external payable whenNotPaused {
