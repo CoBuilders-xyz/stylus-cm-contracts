@@ -242,13 +242,12 @@ contract CacheManagerAutomation is
                 emit MinBidCheck(contractAddress, minBid);
                 uint192 bidAmount = minBid + 1; // TODO: Check why +1
 
-                // Withdraw bid amount from escrow
-                try escrow.withdrawForBid(payable(user), bidAmount) {
-                    // Check if bid amount is within max bid and user balance
-                    if (
-                        bidAmount <= contracts[i].maxBid &&
-                        userBalance >= bidAmount
-                    ) {
+                if (
+                    bidAmount <= contracts[i].maxBid && userBalance >= bidAmount
+                ) {
+                    // Withdraw bid amount from escrow
+                    try escrow.withdrawForBid(payable(user), bidAmount) {
+                        // Check if bid amount is within max bid and user balance
                         // Place bid
                         try
                             cacheManager.placeBid{value: bidAmount}(
@@ -280,18 +279,18 @@ contract CacheManagerAutomation is
                             );
                             failedBids++;
                         }
-                    } else {
+                    } catch {
+                        emit BidError(
+                            user,
+                            contractAddress,
+                            bidAmount,
+                            'Escrow withdrawal failed'
+                        );
                         failedBids++;
+                        break;
                     }
-                } catch {
-                    emit BidError(
-                        user,
-                        contractAddress,
-                        bidAmount,
-                        'Escrow withdrawal failed'
-                    );
+                } else {
                     failedBids++;
-                    break;
                 }
             }
         }
@@ -349,7 +348,6 @@ contract CacheManagerAutomation is
         uint256 amount = escrow.depositsOf(msg.sender);
         if (amount == 0) revert InsufficientBalance();
 
-        // Update balance before transfer to prevent reentrancy
         emit BalanceUpdated(msg.sender, 0);
 
         escrow.withdraw(payable(msg.sender));
