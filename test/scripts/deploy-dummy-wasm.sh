@@ -60,7 +60,7 @@ for ((i=1; i<=ITERATIONS; i++)); do
     DUMMY_NEW="dummy_${RANDOM_NUM}"
 
     # Replace function name in Rust file
-    sed -i "s/pub fn ${DUMMY_OLD}(/pub fn ${DUMMY_NEW}(/g" "$RUST_FILE"
+    perl -i -pe "s/pub fn ${DUMMY_OLD}\\(/pub fn ${DUMMY_NEW}\\(/g" "$RUST_FILE"
 
     # Compile and deploy the contract
     CONTRACT_ADDRESS=$(cargo stylus deploy --private-key $ARBPRE_PK --no-verify --endpoint=$RPC 2>/dev/null | grep "deployed code at address" | awk '{print $5}')
