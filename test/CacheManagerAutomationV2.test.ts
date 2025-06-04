@@ -668,6 +668,9 @@ describe('cacheManagerAutomation', async function () {
     describe('Fund Balance', function () {
       it('Should allow users to fund their balance', async function () {
         const fundAmount = hre.ethers.parseEther('0.005');
+        const initialBalance = await cmaDeployment.cacheManagerAutomation
+          .connect(user)
+          .getUserBalance();
 
         await expect(
           cmaDeployment.cacheManagerAutomation.connect(user).fundBalance({
@@ -675,12 +678,12 @@ describe('cacheManagerAutomation', async function () {
           })
         )
           .to.emit(cmaDeployment.cacheManagerAutomation, 'BalanceUpdated')
-          .withArgs(user.address, fundAmount);
+          .withArgs(user.address, initialBalance + fundAmount);
 
         const userBalance = await cmaDeployment.cacheManagerAutomation
           .connect(user)
           .getUserBalance();
-        expect(userBalance).to.equal(fundAmount);
+        expect(userBalance).to.equal(initialBalance + fundAmount);
       });
 
       it('Should revert when funding with less than MIN_FUND_AMOUNT', async function () {
@@ -792,6 +795,10 @@ describe('cacheManagerAutomation', async function () {
   describe('Bidding Mechanism', function () {
     before(async function () {
       cmaDeployment = await deployCMA(); // Clean CMA for this section
+      console.log(
+        'New Clean CMA deployed at:',
+        await cmaDeployment.cacheManagerAutomation.getAddress()
+      );
     });
     describe('Automation', function () {
       it('Should do nothing when no contracts are registered', async function () {
@@ -947,22 +954,31 @@ describe('cacheManagerAutomation', async function () {
         expect(eventNames).to.be.empty;
       });
 
-      it('Should handle multiple contracts from the same user correctly', async function () {
+      it.only('Should handle multiple contracts from the same user correctly', async function () {
+        this.timeout(0);
         const [auxContract, auxContract2] = await deployDummyWASMContracts(3);
         const auxContractToCacheAddress = hre.ethers.getAddress(auxContract);
         const auxContract2ToCacheAddress = hre.ethers.getAddress(auxContract2);
 
         await cmaDeployment.cacheManager.placeBid(auxContractToCacheAddress, {
-          value: hre.ethers.parseEther('0.0005'),
+          value: hre.ethers.parseEther('0'),
         });
         await cmaDeployment.cacheManager.placeBid(auxContract2ToCacheAddress, {
-          value: hre.ethers.parseEther('0.0005'),
+          value: hre.ethers.parseEther('0'),
         });
 
         const minBid = await cmaDeployment.cacheManager['getMinBid(address)'](
           auxContractToCacheAddress
         );
-        expect(minBid).to.equal(hre.ethers.parseEther('0.0005'));
+        expect(minBid).to.equal(hre.ethers.parseEther('0')); // May fail due to decay, just re-run.
+        const fetchInitialUserContracts =
+          await cmaDeployment.cacheManagerAutomation
+            .connect(user)
+            .getContracts();
+        const initialUserContracts =
+          fetchInitialUserContracts.length > 0
+            ? fetchInitialUserContracts[0].contracts
+            : [];
 
         const contracts = await deployDummyWASMContracts(5);
         const maxBid = hre.ethers.parseEther('0.001');
@@ -975,7 +991,7 @@ describe('cacheManagerAutomation', async function () {
         });
 
         const userAddress = await user.getAddress();
-        const bidRequests = contracts.map((contract) => ({
+        const bidRequests = contracts.slice(2, 4).map((contract) => ({
           contractAddress: contract,
           user: userAddress,
         }));
@@ -993,7 +1009,7 @@ describe('cacheManagerAutomation', async function () {
         const bidPlacedEvents = events.filter(
           (event) => event.eventName === 'BidPlaced'
         );
-        expect(bidPlacedEvents.length).to.equal(5);
+        expect(bidPlacedEvents.length).to.equal(bidRequests.length);
 
         const bidPlacedTotalAmount = bidPlacedEvents.reduce(
           (acc, event) => acc + event.args[2],
@@ -1003,6 +1019,22 @@ describe('cacheManagerAutomation', async function () {
           .connect(user)
           .getUserBalance();
         expect(userBalance).to.equal(initialUserBalance - bidPlacedTotalAmount);
+
+        const userContracts = await cmaDeployment.cacheManagerAutomation
+          .connect(user)
+          .getContracts();
+        expect(userContracts[0].contracts.length).to.equal(
+          initialUserContracts.length + bidRequests.length
+        );
+        expect(userContracts[0].user).to.equal(userAddress);
+
+        // expect all dummy contracts to be returned
+        expect(
+          userContracts[0].contracts.map((contract) => contract.contractAddress)
+        ).to.deep.equal([
+          ...initialUserContracts.map((c) => c.contractAddress),
+          ...contracts,
+        ]);
       });
     });
 

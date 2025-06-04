@@ -18,6 +18,10 @@ interface ICacheManagerAutomationV2 {
         bool shouldBid;
         ContractConfig contractConfig;
     }
+    struct UserContractsData {
+        address user;
+        ContractConfig[] contracts;
+    }
 
     // Events
     event ContractAdded(
@@ -87,6 +91,18 @@ interface ICacheManagerAutomationV2 {
         uint256 timestamp
     );
 
+    // Debug events
+    event DebugBidCheck(
+        address indexed user,
+        address indexed contractAddress,
+        string step
+    );
+    event DebugMinBidFetch(
+        address indexed contractAddress,
+        uint192 minBid,
+        bool success
+    );
+
     // Errors
     error InvalidAddress();
     error InvalidBid();
@@ -117,4 +133,5 @@ interface ICacheManagerAutomationV2 {
     function withdrawBalance() external;
     function getUserBalance() external view returns (uint256);
     function placeBids(BidRequest[] calldata _bidRequests) external;
+    function getContracts() external view returns (UserContractsData[] memory);
 }

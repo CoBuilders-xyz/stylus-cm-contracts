@@ -42,6 +42,11 @@ contract CacheManagerAutomationV2 is
     ICacheManager public cacheManager;
     IArbWasmCache public arbWasmCache;
     mapping(address => ContractConfig[]) public userContracts;
+    EnumerableSet.AddressSet private usersWithContracts;
+
+    // ------------------------------------------------------------------------
+    // Structs
+    // ------------------------------------------------------------------------
 
     // ------------------------------------------------------------------------
     // Modifiers
@@ -104,6 +109,11 @@ contract CacheManagerAutomationV2 is
             }
         }
 
+        // Add user to set if this is their first contract
+        if (contracts.length == 0) {
+            usersWithContracts.add(msg.sender);
+        }
+
         contracts.push(
             ContractConfig({
                 contractAddress: _contract,
@@ -142,6 +152,12 @@ contract CacheManagerAutomationV2 is
             if (contracts[i].contractAddress == _contract) {
                 contracts[i] = contracts[contracts.length - 1];
                 contracts.pop();
+
+                // Remove user from set if they have no more contracts
+                if (contracts.length == 0) {
+                    usersWithContracts.remove(msg.sender);
+                }
+
                 emit ContractRemoved(msg.sender, _contract);
                 return;
             }
@@ -159,6 +175,9 @@ contract CacheManagerAutomationV2 is
             emit ContractRemoved(msg.sender, contracts[i].contractAddress);
         }
         delete userContracts[msg.sender];
+
+        // Remove user from set since they have no more contracts
+        usersWithContracts.remove(msg.sender);
     }
 
     function getUserContracts()
@@ -206,6 +225,23 @@ contract CacheManagerAutomationV2 is
             if (!result.shouldBid) continue;
             _placeBid(_bidRequests[i].user, result.contractConfig);
         }
+    }
+
+    function getContracts() external view returns (UserContractsData[] memory) {
+        uint256 userCount = usersWithContracts.length();
+        UserContractsData[] memory allUserContracts = new UserContractsData[](
+            userCount
+        );
+
+        for (uint256 i = 0; i < userCount; i++) {
+            address user = usersWithContracts.at(i);
+            allUserContracts[i] = UserContractsData({
+                user: user,
+                contracts: userContracts[user]
+            });
+        }
+
+        return allUserContracts;
     }
 
     // ------------------------------------------------------------------------
