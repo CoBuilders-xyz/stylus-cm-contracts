@@ -954,7 +954,7 @@ describe('cacheManagerAutomation', async function () {
         expect(eventNames).to.be.empty;
       });
 
-      it.only('Should handle multiple contracts from the same user correctly', async function () {
+      it('Should handle multiple contracts from the same user correctly', async function () {
         this.timeout(0);
         const [auxContract, auxContract2] = await deployDummyWASMContracts(3);
         const auxContractToCacheAddress = hre.ethers.getAddress(auxContract);

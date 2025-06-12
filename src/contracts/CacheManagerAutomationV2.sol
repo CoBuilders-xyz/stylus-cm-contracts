@@ -34,6 +34,7 @@ contract CacheManagerAutomationV2 is
     uint256 private constant MIN_FUND_AMOUNT = 1;
     uint256 private constant MAX_USER_FUNDS = 1 ether;
     uint256 private constant MAX_BIDS_PER_ITERATION = 50;
+    uint256 private constant MAX_USERS_PER_PAGE = 100;
 
     // ------------------------------------------------------------------------
     // State variables
@@ -227,6 +228,7 @@ contract CacheManagerAutomationV2 is
         }
     }
 
+    // May revert if too many. Better use paginated version.
     function getContracts() external view returns (UserContractsData[] memory) {
         uint256 userCount = usersWithContracts.length();
         UserContractsData[] memory allUserContracts = new UserContractsData[](
@@ -242,6 +244,68 @@ contract CacheManagerAutomationV2 is
         }
 
         return allUserContracts;
+    }
+
+    /// @notice Get contracts with pagination support
+    /// @param offset Starting index for pagination
+    /// @param limit Maximum number of users to return (0 = no limit, but capped at 100)
+    /// @return userData Array of user contract data
+    /// @return hasMore Whether there are more users beyond this page
+    function getContractsPaginated(
+        uint256 offset,
+        uint256 limit
+    )
+        external
+        view
+        returns (UserContractsData[] memory userData, bool hasMore)
+    {
+        uint256 userCount = usersWithContracts.length();
+
+        // Validate offset
+        if (offset >= userCount) {
+            return (new UserContractsData[](0), false);
+        }
+
+        // Cap limit to prevent abuse (max 100 users per call)
+        uint256 maxLimit = MAX_USERS_PER_PAGE;
+        if (limit == 0 || limit > maxLimit) {
+            limit = maxLimit;
+        }
+
+        // Calculate actual number of users to return
+        uint256 remainingUsers = userCount - offset;
+        uint256 usersToReturn = remainingUsers < limit ? remainingUsers : limit;
+
+        // Create result array
+        userData = new UserContractsData[](usersToReturn);
+
+        // Populate data
+        for (uint256 i = 0; i < usersToReturn; i++) {
+            address user = usersWithContracts.at(offset + i);
+            userData[i] = UserContractsData({
+                user: user,
+                contracts: userContracts[user]
+            });
+        }
+
+        // Check if there are more users
+        hasMore = offset + usersToReturn < userCount;
+
+        return (userData, hasMore);
+    }
+
+    /// @notice Get total number of users with contracts
+    /// @return Total number of users
+    function getTotalUsersCount() external view returns (uint256) {
+        return usersWithContracts.length();
+    }
+
+    /// @notice Get user at specific index (for iteration purposes)
+    /// @param index Index of the user
+    /// @return User address at the given index
+    function getUserAtIndex(uint256 index) external view returns (address) {
+        require(index < usersWithContracts.length(), 'Index out of bounds');
+        return usersWithContracts.at(index);
     }
 
     // ------------------------------------------------------------------------

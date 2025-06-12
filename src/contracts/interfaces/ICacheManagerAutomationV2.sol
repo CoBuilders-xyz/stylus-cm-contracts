@@ -134,4 +134,10 @@ interface ICacheManagerAutomationV2 {
     function getUserBalance() external view returns (uint256);
     function placeBids(BidRequest[] calldata _bidRequests) external;
     function getContracts() external view returns (UserContractsData[] memory);
+    function getContractsPaginated(
+        uint256 offset,
+        uint256 limit
+    ) external view returns (UserContractsData[] memory userData, bool hasMore);
+    function getTotalUsersCount() external view returns (uint256);
+    function getUserAtIndex(uint256 index) external view returns (address);
 }
