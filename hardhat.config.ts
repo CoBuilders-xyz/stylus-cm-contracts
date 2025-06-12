@@ -18,6 +18,10 @@ const config: HardhatUserConfig = {
         process.env.ARBLOC_OWNER_PK || '',
       ],
     },
+    arbitrumSepolia: {
+      url: 'https://arb-sepolia.g.alchemy.com/v2/uEQNrf1PSgpUcyWrvB_UjFl5hTWATpEz',
+      accounts: [process.env.USER_PK || '', process.env.USER_PK || ''],
+    },
   },
   solidity: {
     compilers: [
@@ -25,7 +29,7 @@ const config: HardhatUserConfig = {
         version: '0.8.28',
       },
       {
-        version: '0.8.20',
+        version: '0.8.30',
         settings: {
           optimizer: {
             enabled: true,
