@@ -1,7 +1,7 @@
 import { exec } from 'child_process';
 import util from 'util';
 import hre from 'hardhat';
-import { Signer, Provider } from 'ethers';
+import { Signer, Provider, Contract } from 'ethers';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -9,10 +9,12 @@ const execPromise = util.promisify(exec);
 
 import cacheManagerABIJson from '../src/abis/cacheManagerABI.json';
 import arbWasmCacheABIJson from '../src/abis/arbWasmCacheABI.json';
-import type { CacheManagerAutomation } from '../typechain-types';
+import type { CacheManagerAutomationV2 } from '../typechain-types';
+import { ICacheManager__factory } from '../typechain-types/factories/src/contracts/interfaces/IExternalContracts.sol';
 
 export interface CMADeployment {
-  cacheManagerAutomation: CacheManagerAutomation;
+  cacheManagerAutomation: CacheManagerAutomationV2;
+  cacheManager: Contract;
   cacheManagerAddress: string;
   arbWasmCacheAddress: string;
   owner: Signer;
@@ -26,7 +28,7 @@ export interface CMADeployment {
  * the cache manager address, and the owner signer.
  */
 export async function deployCMA(): Promise<CMADeployment> {
-  const [owner, user1] = await hre.ethers.getSigners();
+  const [owner] = await hre.ethers.getSigners();
   const cacheManagerAddress = hre.ethers.getAddress(
     process.env.CACHE_MANAGER_ADDRESS || '0x'
   );
@@ -34,8 +36,12 @@ export async function deployCMA(): Promise<CMADeployment> {
     process.env.ARB_WASM_CACHE_ADDRESS || '0x'
   );
 
+  const l2Owner = await hre.ethers.getSigner(
+    process.env.ARBLOC_OWNER_ADD || '0x'
+  );
+
   const CacheManagerAutomationFactory = await hre.ethers.getContractFactory(
-    'CacheManagerAutomation'
+    'CacheManagerAutomationV2'
   );
 
   const upgradableProxy = await hre.upgrades.deployProxy(
@@ -48,8 +54,15 @@ export async function deployCMA(): Promise<CMADeployment> {
 
   await upgradableProxy.waitForDeployment();
 
+  const cacheManager = new hre.ethers.Contract(
+    cacheManagerAddress,
+    cacheManagerABIJson.abi,
+    l2Owner
+  );
+
   return {
-    cacheManagerAutomation: upgradableProxy.connect(user1),
+    cacheManagerAutomation: upgradableProxy.connect(owner),
+    cacheManager,
     cacheManagerAddress,
     arbWasmCacheAddress,
     owner,
@@ -67,18 +80,12 @@ export async function deployCMA(): Promise<CMADeployment> {
  *
  * @returns {Promise<string[]>} An array of contract addresses.
  */
-export async function deployDummyWASMContracts(): Promise<string[]> {
+export async function deployDummyWASMContracts(
+  amount: number = 1
+): Promise<string[]> {
   try {
-    const dummyContractsAmount = parseInt(
-      process.env.DUMMY_CONTRACTS_AMOUNT || '4'
-    );
-    if (dummyContractsAmount % 2 !== 0 || dummyContractsAmount < 2) {
-      throw new Error(
-        'DUMMY_CONTRACTS_AMOUNT environment variable must be an even number greater than 2'
-      );
-    }
     const { stdout, stderr } = await execPromise(
-      `bash test/scripts/deploy-dummy-wasm.sh -e .env -i ${dummyContractsAmount}`
+      `bash test/scripts/deploy-dummy-wasm.sh -e .env -i ${amount}`
     );
 
     if (stderr) {
@@ -281,4 +288,34 @@ export async function isContractCached(contractAddress: string) {
   );
   const arbWasmCache = await getArbWasmCache();
   return await arbWasmCache.codehashIsCached(contractCodeHash);
+}
+
+/**
+ * Deploys a Cache Manager Automation contract and returns its deployment details.
+ *
+ * @returns {Promise<CMADeployment>} An object containing the deployed Cache Manager Automation instance,
+ * the cache manager address, and the owner signer.
+ */
+export async function deployCMASepolia(): Promise<void> {
+  const cacheManagerAddress = hre.ethers.getAddress(
+    process.env.CACHE_MANAGER_ADDRESS || '0x'
+  );
+  const arbWasmCacheAddress = hre.ethers.getAddress(
+    process.env.ARB_WASM_CACHE_ADDRESS || '0x'
+  );
+
+  const CacheManagerAutomationFactory = await hre.ethers.getContractFactory(
+    'CacheManagerAutomationV2'
+  );
+
+  const upgradableProxy = await hre.upgrades.deployProxy(
+    CacheManagerAutomationFactory,
+    [cacheManagerAddress, arbWasmCacheAddress],
+    {
+      initializer: 'initialize',
+    }
+  );
+
+  await upgradableProxy.waitForDeployment();
+  console.log('CMA deployed', await upgradableProxy.getAddress());
 }

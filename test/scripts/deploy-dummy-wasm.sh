@@ -55,6 +55,12 @@ RUST_FILE="src/lib.rs"
 # Guarantee clean start
 cp $CLEAN_RUST_FILE $RUST_FILE
 DUMMY_OLD="dummy"
+
+# Array to store deployed contract addresses
+declare -a CONTRACT_ADDRESSES
+
+echo "Deploying $ITERATIONS dummy contracts..."
+
 for ((i=1; i<=ITERATIONS; i++)); do
     RANDOM_NUM=$(( RANDOM % 100000 ))  # Generate a random number
     DUMMY_NEW="dummy_${RANDOM_NUM}"
@@ -66,8 +72,36 @@ for ((i=1; i<=ITERATIONS; i++)); do
     CONTRACT_ADDRESS=$(cargo stylus deploy --private-key $ARBPRE_PK --no-verify --endpoint=$RPC 2>/dev/null | grep "deployed code at address" | awk '{print $5}')
 
     echo "$CONTRACT_ADDRESS"
+    CONTRACT_ADDRESSES+=("$CONTRACT_ADDRESS")
     
     DUMMY_OLD=$DUMMY_NEW
 done
+
 # Restore the original function name
 cp $CLEAN_RUST_FILE $RUST_FILE
+
+# Return to the root directory
+cd ../../../
+
+# Create addresses.txt directory if it doesn't exist
+ADDRESSES_OUTPUT_FILE="test/scripts/addresses.txt"
+mkdir -p "$(dirname "$ADDRESSES_OUTPUT_FILE")"
+
+# Append addresses to the addresses.txt file
+echo "" >> "$ADDRESSES_OUTPUT_FILE"
+for addr in "${CONTRACT_ADDRESSES[@]}"; do
+    if [ -n "$addr" ]; then  # Only add non-empty addresses
+        # Clean the address - remove any ANSI color codes
+        clean_addr=$(echo "$addr" | sed 's/\x1b\[[0-9;]*m//g')
+        
+        # Check if address already exists in the file to avoid duplicates
+        if ! grep -q "$clean_addr" "$ADDRESSES_OUTPUT_FILE"; then
+            echo "$clean_addr" >> "$ADDRESSES_OUTPUT_FILE"
+            echo "Added address $clean_addr to $ADDRESSES_OUTPUT_FILE"
+        else
+            echo "Address $clean_addr already exists in $ADDRESSES_OUTPUT_FILE"
+        fi
+    fi
+done
+
+echo "All contracts deployed and addresses saved to $ADDRESSES_OUTPUT_FILE!"
