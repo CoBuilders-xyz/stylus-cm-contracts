@@ -5,7 +5,6 @@
   "main": "",
   "scripts": {
     "testCMA": "npx hardhat test test/CacheManagerAutomation.test.ts --network localArb",
-    "testCMAV2": "npx hardhat test test/CacheManagerAutomationV2.test.ts --network localArb",
     "testCM": "npx hardhat test test/CacheManager.test.ts --network localArb"
   },
   "repository": {

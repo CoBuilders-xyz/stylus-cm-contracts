@@ -26,3 +26,6 @@ ignition/deployments/chain-31337
 
 # OpenZeppelin
 .openzeppelin
+
+# Build files
+/build

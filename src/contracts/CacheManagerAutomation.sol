@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
-// Chainlink
-import {AutomationCompatibleInterface} from '@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol';
-
+// OpenZeppelin
+import {EnumerableSet} from '@openzeppelin/contracts/utils/structs/EnumerableSet.sol';
 // OpenZeppelin
 import {Initializable} from '@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol';
 import {UUPSUpgradeable} from '@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol';
 import {OwnableUpgradeable} from '@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol';
 import {ReentrancyGuardUpgradeable} from '@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol';
-import {EnumerableSet} from '@openzeppelin/contracts/utils/structs/EnumerableSet.sol';
 import {BiddingEscrow} from './BiddingEscrow.sol';
 
 // Interfaces
@@ -20,7 +18,6 @@ import './interfaces/ICacheManagerAutomation.sol';
 /// @notice A automation contract that manages user bids for contract caching in the Stylus VM
 contract CacheManagerAutomation is
     ICacheManagerAutomation,
-    AutomationCompatibleInterface,
     Initializable,
     UUPSUpgradeable,
     OwnableUpgradeable,
@@ -32,30 +29,29 @@ contract CacheManagerAutomation is
     // ------------------------------------------------------------------------
     // Constants
     // ------------------------------------------------------------------------
-
     uint256 private constant MAX_CONTRACTS_PER_USER = 50;
-    uint256 private constant MIN_BID_AMOUNT = 1 wei; // TODO: Check if this is correct
+    uint256 private constant MIN_MAX_BID_AMOUNT = 1;
+    uint256 private constant MIN_FUND_AMOUNT = 1;
+    uint256 private constant MAX_USER_FUNDS = 1 ether;
+    uint256 private constant MAX_BIDS_PER_ITERATION = 50;
+    uint256 private constant MAX_USERS_PER_PAGE = 100;
 
     // ------------------------------------------------------------------------
     // State variables
     // ------------------------------------------------------------------------
 
-    bool public paused;
-
     ICacheManager public cacheManager;
     IArbWasmCache public arbWasmCache;
-
     mapping(address => ContractConfig[]) public userContracts;
-    EnumerableSet.AddressSet private userAddresses;
+    EnumerableSet.AddressSet private usersWithContracts;
+
+    // ------------------------------------------------------------------------
+    // Structs
+    // ------------------------------------------------------------------------
 
     // ------------------------------------------------------------------------
     // Modifiers
     // ------------------------------------------------------------------------
-
-    modifier whenNotPaused() {
-        if (paused) revert ContractPaused();
-        _;
-    }
 
     // ------------------------------------------------------------------------
     // Initializer
@@ -86,91 +82,81 @@ contract CacheManagerAutomation is
     // Emergency functions
     // ------------------------------------------------------------------------
 
-    /// @notice Pause contract operations
-    function pause() external onlyOwner {
-        paused = true;
-        emit Paused(msg.sender);
-    }
-
-    /// @notice Unpause contract operations
-    function unpause() external onlyOwner {
-        paused = false;
-        emit Unpaused(msg.sender);
-    }
-
-    /// @notice Allows owner to view all registered user addresses
-    function getUserAddresses()
-        external
-        view
-        onlyOwner
-        returns (address[] memory)
-    {
-        return userAddresses.values();
-    }
-
     // ------------------------------------------------------------------------
-    // Contract functions
+    // Admin functions
     // ------------------------------------------------------------------------
 
-    /// @notice Inserts or updates a contract configuration
-    function insertOrUpdateContract(
+    // ------------------------------------------------------------------------
+    // Contract externalfunctions (user)
+    // ------------------------------------------------------------------------
+
+    function insertContract(
         address _contract,
         uint256 _maxBid,
         bool _enabled
-    ) external payable whenNotPaused {
-        if (_contract == address(0)) revert InvalidAddress();
-        if (_maxBid < MIN_BID_AMOUNT) revert InvalidBid();
+    ) external payable {
+        if (_contract == address(0)) revert InvalidAddress(); // TODO allow on only stylus contracts
+        if (_maxBid < MIN_MAX_BID_AMOUNT) revert InvalidBid();
 
         ContractConfig[] storage contracts = userContracts[msg.sender];
         if (contracts.length >= MAX_CONTRACTS_PER_USER)
             revert TooManyContracts();
 
-        // Try to update existing contract
+        // Add new contract
+        // Check if contract is already in the list
         for (uint256 i = 0; i < contracts.length; i++) {
             if (contracts[i].contractAddress == _contract) {
-                contracts[i].maxBid = _maxBid;
-                contracts[i].enabled = _enabled;
-                _updateUserBalance(msg.sender, msg.value);
-                emit ContractUpdated(msg.sender, _contract, _maxBid);
-                return;
+                revert ContractAlreadyExists();
             }
         }
 
-        // Add new contract
+        // Add user to set if this is their first contract
+        if (contracts.length == 0) {
+            usersWithContracts.add(msg.sender);
+        }
+
         contracts.push(
             ContractConfig({
                 contractAddress: _contract,
                 maxBid: _maxBid,
-                lastBid: type(uint256).max,
                 enabled: _enabled
             })
         );
-
         _updateUserBalance(msg.sender, msg.value);
-        userAddresses.add(msg.sender);
         emit ContractAdded(msg.sender, _contract, _maxBid);
     }
 
-    /// @notice Updates user balance and emits event
-    function _updateUserBalance(address user, uint256 amount) internal {
-        escrow.deposit{value: amount}(user);
-        emit BalanceUpdated(user, escrow.depositsOf(user));
+    function updateContract(
+        address _contract,
+        uint256 _maxBid,
+        bool _enabled
+    ) external {
+        if (_contract == address(0)) revert InvalidAddress();
+        if (_maxBid < 0) revert InvalidBid();
+
+        ContractConfig[] storage contracts = userContracts[msg.sender];
+        for (uint256 i = 0; i < contracts.length; i++) {
+            if (contracts[i].contractAddress == _contract) {
+                contracts[i].maxBid = _maxBid;
+                contracts[i].enabled = _enabled;
+                emit ContractUpdated(msg.sender, _contract, _maxBid);
+                return;
+            }
+        }
     }
 
-    /// @notice Removes a contract from user's configuration
     function removeContract(address _contract) external {
         ContractConfig[] storage contracts = userContracts[msg.sender];
         if (contracts.length == 0) revert ContractNotFound();
 
-        bool found = false;
         for (uint256 i = 0; i < contracts.length; i++) {
             if (contracts[i].contractAddress == _contract) {
-                found = true;
                 contracts[i] = contracts[contracts.length - 1];
                 contracts.pop();
 
+                // Remove user from set if they have no more contracts
                 if (contracts.length == 0) {
-                    userAddresses.remove(msg.sender);
+                    usersWithContracts.remove(msg.sender);
                 }
 
                 emit ContractRemoved(msg.sender, _contract);
@@ -190,146 +176,9 @@ contract CacheManagerAutomation is
             emit ContractRemoved(msg.sender, contracts[i].contractAddress);
         }
         delete userContracts[msg.sender];
-        userAddresses.remove(msg.sender);
-    }
 
-    function setContractEnabled(address _contract, bool _enabled) external {
-        ContractConfig[] storage contracts = userContracts[msg.sender];
-        for (uint256 i = 0; i < contracts.length; i++) {
-            if (contracts[i].contractAddress == _contract) {
-                contracts[i].enabled = _enabled;
-                return;
-            }
-        }
-    }
-
-    // Chainlink Automation methods
-    function checkUpkeep(
-        bytes calldata
-    ) external view returns (bool upkeepNeeded, bytes memory performData) {
-        (upkeepNeeded, performData) = _checkContracts();
-    }
-
-    function performUpkeep(bytes calldata performData) external {
-        uint256 totalContracts = abi.decode(performData, (uint256));
-        uint256 successfulBids = 0;
-        uint256 failedBids = 0;
-
-        uint256 totalBids = 0;
-        address[] memory users = userAddresses.values();
-
-        for (
-            uint256 u = 0;
-            u < users.length && totalBids < totalContracts;
-            u++
-        ) {
-            address user = users[u];
-            ContractConfig[] storage contracts = userContracts[user];
-            uint256 userBalance = escrow.depositsOf(user);
-
-            for (
-                uint256 i = 0;
-                i < contracts.length && totalBids < totalContracts;
-                i++
-            ) {
-                if (!_shouldBid(contracts[i])) continue;
-
-                totalBids++;
-                address contractAddress = contracts[i].contractAddress;
-
-                // Get current minimum bid
-                uint192 minBid = cacheManager.getMinBid(contractAddress);
-                emit MinBidCheck(contractAddress, minBid);
-                uint192 bidAmount = minBid + 1; // TODO: Check why +1
-
-                if (
-                    bidAmount <= contracts[i].maxBid && userBalance >= bidAmount
-                ) {
-                    // Withdraw bid amount from escrow
-                    try escrow.withdrawForBid(payable(user), bidAmount) {
-                        // Check if bid amount is within max bid and user balance
-                        // Place bid
-                        try
-                            cacheManager.placeBid{value: bidAmount}(
-                                contractAddress
-                            )
-                        {
-                            contracts[i].lastBid = bidAmount;
-                            successfulBids++;
-                            emit BidPlaced(
-                                user,
-                                contractAddress,
-                                bidAmount,
-                                minBid,
-                                contracts[i].maxBid,
-                                userBalance
-                            );
-
-                            // Get the new minimum bid after successful bid placement
-                            minBid = cacheManager.getMinBid(contractAddress);
-                        } catch {
-                            // Return bid amount to user if bid placement fails
-                            escrow.deposit{value: bidAmount}(user);
-
-                            emit BidError(
-                                user,
-                                contractAddress,
-                                bidAmount,
-                                'Bid placement failed'
-                            );
-                            failedBids++;
-                        }
-                    } catch {
-                        emit BidError(
-                            user,
-                            contractAddress,
-                            bidAmount,
-                            'Escrow withdrawal failed'
-                        );
-                        failedBids++;
-                        break;
-                    }
-                } else {
-                    failedBids++;
-                }
-            }
-        }
-
-        emit UpkeepPerformed(
-            totalContracts,
-            successfulBids,
-            failedBids,
-            block.timestamp
-        );
-    }
-
-    /// @notice Internal function to check contracts for upkeep
-    function _checkContracts() internal view returns (bool, bytes memory) {
-        uint256 totalContracts = 0;
-        address[] memory users = userAddresses.values();
-
-        for (uint256 u = 0; u < users.length; u++) {
-            ContractConfig[] memory contracts = userContracts[users[u]];
-            for (uint256 i = 0; i < contracts.length; i++) {
-                if (!_shouldBid(contracts[i])) continue;
-                totalContracts++;
-            }
-        }
-
-        return (totalContracts > 0, abi.encode(totalContracts));
-    }
-
-    /// @notice Internal function to check if a contract needs bidding
-    function _shouldBid(
-        ContractConfig memory config
-    ) internal view returns (bool) {
-        if (!config.enabled) return false;
-
-        uint192 minBid = cacheManager.getMinBid(config.contractAddress);
-        return
-            minBid < config.maxBid &&
-            !arbWasmCache.codehashIsCached(config.contractAddress.codehash) &&
-            minBid < config.lastBid;
+        // Remove user from set since they have no more contracts
+        usersWithContracts.remove(msg.sender);
     }
 
     function getUserContracts()
@@ -340,11 +189,17 @@ contract CacheManagerAutomation is
         return userContracts[msg.sender];
     }
 
-    function getUserBalance() external view returns (uint256) {
-        return escrow.depositsOf(msg.sender);
+    function fundBalance() external payable {
+        if (msg.value < MIN_FUND_AMOUNT) revert InvalidFundAmount();
+
+        uint256 currentBalance = escrow.depositsOf(msg.sender);
+        if (currentBalance + msg.value > MAX_USER_FUNDS)
+            revert ExceedsMaxUserFunds();
+
+        _updateUserBalance(msg.sender, msg.value);
     }
 
-    function withdrawBalance() external nonReentrant whenNotPaused {
+    function withdrawBalance() external nonReentrant {
         uint256 amount = escrow.depositsOf(msg.sender);
         if (amount == 0) revert InsufficientBalance();
 
@@ -353,10 +208,204 @@ contract CacheManagerAutomation is
         escrow.withdraw(payable(msg.sender));
     }
 
-    function fundBalance() external payable whenNotPaused {
-        if (msg.value < MIN_BID_AMOUNT) revert InvalidBid();
-        _updateUserBalance(msg.sender, msg.value);
+    function getUserBalance() external view returns (uint256) {
+        return escrow.depositsOf(msg.sender);
     }
 
-    receive() external payable whenNotPaused {}
+    receive() external payable {}
+
+    // ------------------------------------------------------------------------
+    // Contract external functions (operator)
+    // ------------------------------------------------------------------------
+    // Anyone can call this functions but the operator (owner) should be the only interested party on calling them
+
+    function placeBids(BidRequest[] calldata _bidRequests) external {
+        if (_bidRequests.length > MAX_BIDS_PER_ITERATION) revert TooManyBids();
+        for (uint256 i = 0; i < _bidRequests.length; i++) {
+            BidResult memory result = _shouldBid(_bidRequests[i]);
+            if (!result.shouldBid) continue;
+            _placeBid(_bidRequests[i].user, result.contractConfig);
+        }
+    }
+
+    // May revert if too many. Better use paginated version.
+    function getContracts() external view returns (UserContractsData[] memory) {
+        uint256 userCount = usersWithContracts.length();
+        UserContractsData[] memory allUserContracts = new UserContractsData[](
+            userCount
+        );
+
+        for (uint256 i = 0; i < userCount; i++) {
+            address user = usersWithContracts.at(i);
+            allUserContracts[i] = UserContractsData({
+                user: user,
+                contracts: userContracts[user]
+            });
+        }
+
+        return allUserContracts;
+    }
+
+    /// @notice Get contracts with pagination support
+    /// @param offset Starting index for pagination
+    /// @param limit Maximum number of users to return (0 = no limit, but capped at 100)
+    /// @return userData Array of user contract data
+    /// @return hasMore Whether there are more users beyond this page
+    function getContractsPaginated(
+        uint256 offset,
+        uint256 limit
+    )
+        external
+        view
+        returns (UserContractsData[] memory userData, bool hasMore)
+    {
+        uint256 userCount = usersWithContracts.length();
+
+        // Validate offset
+        if (offset >= userCount) {
+            return (new UserContractsData[](0), false);
+        }
+
+        // Cap limit to prevent abuse (max 100 users per call)
+        uint256 maxLimit = MAX_USERS_PER_PAGE;
+        if (limit == 0 || limit > maxLimit) {
+            limit = maxLimit;
+        }
+
+        // Calculate actual number of users to return
+        uint256 remainingUsers = userCount - offset;
+        uint256 usersToReturn = remainingUsers < limit ? remainingUsers : limit;
+
+        // Create result array
+        userData = new UserContractsData[](usersToReturn);
+
+        // Populate data
+        for (uint256 i = 0; i < usersToReturn; i++) {
+            address user = usersWithContracts.at(offset + i);
+            userData[i] = UserContractsData({
+                user: user,
+                contracts: userContracts[user]
+            });
+        }
+
+        // Check if there are more users
+        hasMore = offset + usersToReturn < userCount;
+
+        return (userData, hasMore);
+    }
+
+    /// @notice Get total number of users with contracts
+    /// @return Total number of users
+    function getTotalUsersCount() external view returns (uint256) {
+        return usersWithContracts.length();
+    }
+
+    /// @notice Get user at specific index (for iteration purposes)
+    /// @param index Index of the user
+    /// @return User address at the given index
+    function getUserAtIndex(uint256 index) external view returns (address) {
+        require(index < usersWithContracts.length(), 'Index out of bounds');
+        return usersWithContracts.at(index);
+    }
+
+    // ------------------------------------------------------------------------
+    // Contract internal functions
+    // ------------------------------------------------------------------------
+
+    /// @notice Internal function to check if a contract needs bidding
+    function _shouldBid(
+        BidRequest memory bidRequest
+    ) internal view returns (BidResult memory) {
+        address user = bidRequest.user;
+        address contractAddress = bidRequest.contractAddress;
+
+        // Negative cases returns false for skipping the bid
+        // These are double checks just in case. Off-chain backend should send
+        // only valid bids.
+
+        // Are addresses valid?
+        if (user == address(0) || contractAddress == address(0))
+            return BidResult(false, ContractConfig(address(0), 0, false));
+
+        // Address is valid
+
+        // Is contract already cached?
+        if (arbWasmCache.codehashIsCached(contractAddress.codehash))
+            return BidResult(false, ContractConfig(address(0), 0, false));
+
+        // Address is valid & contract is not cached
+
+        // Is contract enabled and contract belongs to user?
+        ContractConfig[] storage contracts = userContracts[user];
+        for (uint256 j = 0; j < contracts.length; j++) {
+            if (contracts[j].contractAddress == contractAddress) {
+                // Is contract enabled?
+                if (!contracts[j].enabled)
+                    return BidResult(false, contracts[j]);
+
+                // Address is valid & contract is not cached & contract belongs to user & contract is enabled
+
+                // TODO when bidding strategy is defined, fund checks will change.
+
+                // Is bid amount within max bid?
+                uint192 minBid = cacheManager.getMinBid(contractAddress);
+                if (minBid > contracts[j].maxBid)
+                    return BidResult(false, contracts[j]);
+
+                // Address is valid & contract is not cached & contract belongs to user & contract is enabled & minBid <= maxBid
+
+                // Is user balance enough to bid?
+                uint256 userBalance = escrow.depositsOf(user);
+                if (minBid > userBalance) return BidResult(false, contracts[j]);
+                // Address is valid & contract is not cached & contract belongs to user & contract is enabled & minBid <= maxBid & userBalance => minBid
+
+                return BidResult(true, contracts[j]);
+            }
+        }
+        return BidResult(false, ContractConfig(address(0), 0, false)); // Contract not found
+    }
+
+    function _placeBid(
+        address user,
+        ContractConfig memory contractConfig
+    ) internal {
+        address contractAddress = contractConfig.contractAddress;
+        uint256 maxBid = contractConfig.maxBid;
+        uint192 minBid = cacheManager.getMinBid(contractAddress);
+
+        try escrow.withdrawForBid(payable(user), minBid) {
+            try cacheManager.placeBid{value: minBid}(contractAddress) {
+                uint256 userBalance = escrow.depositsOf(user);
+                emit BidPlaced(
+                    user,
+                    contractAddress,
+                    minBid,
+                    maxBid,
+                    userBalance
+                );
+            } catch {
+                // Return bid amount to user if bid placement fails
+                escrow.deposit{value: minBid}(user);
+                emit BidError(
+                    user,
+                    contractAddress,
+                    minBid,
+                    'Bid placement failed'
+                );
+            }
+        } catch {
+            emit BidError(
+                user,
+                contractAddress,
+                minBid,
+                'Insufficient balance'
+            );
+        }
+    }
+
+    /// @notice Updates user balance and emits event
+    function _updateUserBalance(address user, uint256 amount) internal {
+        escrow.deposit{value: amount}(user);
+        emit BalanceUpdated(user, escrow.depositsOf(user));
+    }
 }

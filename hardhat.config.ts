@@ -26,9 +26,6 @@ const config: HardhatUserConfig = {
   solidity: {
     compilers: [
       {
-        version: '0.8.28',
-      },
-      {
         version: '0.8.30',
         settings: {
           optimizer: {
@@ -41,6 +38,12 @@ const config: HardhatUserConfig = {
   },
   paths: {
     sources: './src/contracts',
+    artifacts: 'build/artifacts',
+    cache: 'build/cache',
+  },
+  typechain: {
+    outDir: 'build/typechain-types',
+    target: 'ethers-v6',
   },
 };
 

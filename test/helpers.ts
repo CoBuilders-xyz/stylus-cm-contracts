@@ -9,11 +9,10 @@ const execPromise = util.promisify(exec);
 
 import cacheManagerABIJson from '../src/abis/cacheManagerABI.json';
 import arbWasmCacheABIJson from '../src/abis/arbWasmCacheABI.json';
-import type { CacheManagerAutomationV2 } from '../typechain-types';
-import { ICacheManager__factory } from '../typechain-types/factories/src/contracts/interfaces/IExternalContracts.sol';
+import type { CacheManagerAutomation } from '../build/typechain-types';
 
 export interface CMADeployment {
-  cacheManagerAutomation: CacheManagerAutomationV2;
+  cacheManagerAutomation: CacheManagerAutomation;
   cacheManager: Contract;
   cacheManagerAddress: string;
   arbWasmCacheAddress: string;
@@ -41,7 +40,7 @@ export async function deployCMA(): Promise<CMADeployment> {
   );
 
   const CacheManagerAutomationFactory = await hre.ethers.getContractFactory(
-    'CacheManagerAutomationV2'
+    'CacheManagerAutomation'
   );
 
   const upgradableProxy = await hre.upgrades.deployProxy(
@@ -85,7 +84,7 @@ export async function deployDummyWASMContracts(
 ): Promise<string[]> {
   try {
     const { stdout, stderr } = await execPromise(
-      `bash test/scripts/deploy-dummy-wasm.sh -e .env -i ${amount}`
+      `bash test/utils/deploy-dummy-wasm.sh -e .env -i ${amount}`
     );
 
     if (stderr) {
