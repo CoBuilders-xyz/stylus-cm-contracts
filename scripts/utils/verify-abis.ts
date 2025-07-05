@@ -61,12 +61,10 @@ async function verifyABI(abiPath: string): Promise<ABIVerificationResult> {
 }
 
 async function verifyAllABIs() {
-  console.log('🔍 Verifying ABI compatibility...');
+  console.log('🔍 Verifying external ABI compatibility...');
+  console.log('💡 Our contract ABIs are automatically managed by Hardhat');
 
-  const abiDirs = [
-    path.join(__dirname, '../../abis/generated'),
-    path.join(__dirname, '../../abis/external'),
-  ];
+  const abiDirs = [path.join(__dirname, '../../abis/external')];
 
   const results: ABIVerificationResult[] = [];
 
@@ -90,12 +88,12 @@ async function verifyAllABIs() {
   const validABIs = results.filter((r) => r.isValid);
   const invalidABIs = results.filter((r) => !r.isValid);
 
-  console.log('\n📊 Verification Summary:');
-  console.log(`✅ Valid ABIs: ${validABIs.length}`);
-  console.log(`❌ Invalid ABIs: ${invalidABIs.length}`);
+  console.log('\n📊 External ABI Verification Summary:');
+  console.log(`✅ Valid External ABIs: ${validABIs.length}`);
+  console.log(`❌ Invalid External ABIs: ${invalidABIs.length}`);
 
   if (invalidABIs.length > 0) {
-    console.log('\n❌ Invalid ABIs:');
+    console.log('\n❌ Invalid External ABIs:');
     invalidABIs.forEach((result) => {
       console.log(`   ${result.contractName}: ${result.error}`);
     });

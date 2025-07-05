@@ -12,10 +12,9 @@
     "deploy:sepolia": "npx hardhat run scripts/deploy/deploy-cache-manager-automation.ts --network arbitrumSepolia",
     "clean": "npx hardhat clean",
     "typechain": "npx hardhat typechain",
-    "abis:generate": "npx ts-node scripts/utils/generate-abis.ts",
+    "types:external": "npx ts-node scripts/utils/generate-types.ts",
     "abis:verify": "npx ts-node scripts/utils/verify-abis.ts",
-    "types:generate": "npx ts-node scripts/utils/generate-types.ts",
-    "build": "npm run compile && npm run abis:generate && npm run types:generate"
+    "build": "npm run compile && npm run types:external"
   },
   "repository": {
     "type": "git",
