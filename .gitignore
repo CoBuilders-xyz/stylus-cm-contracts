@@ -3,8 +3,8 @@ out
 bin
 target
 node_modules
-node_modules
 .env
+addresses.txt
 
 #Test suite
 test/db/*.db
