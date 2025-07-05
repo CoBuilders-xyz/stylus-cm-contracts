@@ -84,7 +84,7 @@ cp $CLEAN_RUST_FILE $RUST_FILE
 cd ../../../
 
 # Create addresses.txt directory if it doesn't exist
-ADDRESSES_OUTPUT_FILE="test/utils/addresses.txt"
+ADDRESSES_OUTPUT_FILE="addresses.txt"
 mkdir -p "$(dirname "$ADDRESSES_OUTPUT_FILE")"
 
 # Append addresses to the addresses.txt file
