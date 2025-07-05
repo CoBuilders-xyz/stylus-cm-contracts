@@ -4,8 +4,14 @@
   "description": "",
   "main": "",
   "scripts": {
-    "testCMA": "npx hardhat test test/CacheManagerAutomation.test.ts --network localArb",
-    "testCM": "npx hardhat test test/CacheManager.test.ts --network localArb"
+    "compile": "npx hardhat compile",
+    "test": "npx hardhat test",
+    "test:cma": "npx hardhat test test/CacheManagerAutomation.test.ts --network localArb",
+    "test:cm": "npx hardhat test test/CacheManager.test.ts --network localArb",
+    "deploy:local": "npx hardhat run scripts/deploy/deploy-cache-manager-automation.ts --network localArb",
+    "deploy:sepolia": "npx hardhat run scripts/deploy/deploy-cache-manager-automation.ts --network arbitrumSepolia",
+    "clean": "npx hardhat clean",
+    "typechain": "npx hardhat typechain"
   },
   "repository": {
     "type": "git",

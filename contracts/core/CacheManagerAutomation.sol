@@ -11,8 +11,8 @@ import {ReentrancyGuardUpgradeable} from '@openzeppelin/contracts-upgradeable/se
 import {BiddingEscrow} from './BiddingEscrow.sol';
 
 // Interfaces
-import './interfaces/IExternalContracts.sol';
-import './interfaces/ICacheManagerAutomation.sol';
+import '../interfaces/IExternalContracts.sol';
+import '../interfaces/ICacheManagerAutomation.sol';
 
 /// @title Cache Manager Automation
 /// @notice A automation contract that manages user bids for contract caching in the Stylus VM

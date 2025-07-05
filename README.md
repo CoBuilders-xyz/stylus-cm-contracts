@@ -33,6 +33,116 @@ The BiddingEscrow contract is built upon OpenZeppelin's standard Escrow contract
 
 The BiddingEscrow contract maintains the security and reliability of the standard OpenZeppelin implementation while adding the necessary functionality for our bidding mechanism.
 
+## Project Structure
+
+```
+contracts/
+├── core/                    # Core contract implementations
+│   ├── CacheManagerAutomation.sol
+│   └── BiddingEscrow.sol
+├── interfaces/              # Contract interfaces
+│   ├── ICacheManagerAutomation.sol
+│   └── IExternalContracts.sol
+└── mocks/                   # Mock contracts for testing
+
+config/                      # Configuration files
+├── networks.ts              # Network configurations
+├── constants.ts             # Contract constants
+└── deployment-config.ts     # Deployment configurations
+
+scripts/
+└── deploy/                  # Deployment scripts
+    └── deploy-cache-manager-automation.ts
+
+test/                        # Test files
+├── CacheManagerAutomation.test.ts
+├── CacheManager.test.ts
+└── helpers.ts               # Test utilities
+```
+
+## Development
+
+### Prerequisites
+
+- Node.js >= 18
+- npm or yarn
+
+### Installation
+
+1. Clone the repository and install dependencies:
+
+```bash
+npm install
+```
+
+2. Copy environment variables:
+
+```bash
+cp .env.example .env
+# Edit .env with your configuration
+```
+
+### Available Scripts
+
+```bash
+# Compile contracts
+npm run compile
+
+# Run all tests
+npm run test
+
+# Run specific tests
+npm run test:cma    # CacheManagerAutomation tests
+npm run test:cm     # CacheManager tests
+
+# Deploy contracts
+npm run deploy:local    # Deploy to local network
+npm run deploy:sepolia  # Deploy to Arbitrum Sepolia
+
+# Clean build artifacts
+npm run clean
+
+# Generate TypeScript types
+npm run typechain
+```
+
+## Testing
+
+The repository includes comprehensive tests for both contracts. Tests are organized into:
+
+- **Integration Tests**: End-to-end functionality testing
+- **Unit Tests**: Individual function testing
+- **Helper Functions**: Common test utilities
+
+## Deployment
+
+### Local Development
+
+1. Start a local Arbitrum node (if testing against Arbitrum)
+2. Configure your environment variables
+3. Run deployment:
+
+```bash
+npm run deploy:local
+```
+
+### Testnet Deployment
+
+1. Configure your private key for testnet deployment
+2. Deploy to Arbitrum Sepolia:
+
+```bash
+npm run deploy:sepolia
+```
+
+### Configuration
+
+Deployment configurations are managed in `config/deployment-config.ts`:
+
+- Network-specific contract addresses
+- Gas limits and deployment parameters
+- Verification settings
+
 ## Documentation
 
 Detailed documentation for these contracts can be found in:
@@ -40,22 +150,15 @@ Detailed documentation for these contracts can be found in:
 - The `mkdocs/docs` directory of the arb-research repository
 - Local documentation server (follow instructions in arb-research README.md)
 
-## Development and Testing
+## Security
 
-The repository includes comprehensive tests for both contracts. To run the tests:
+This repository uses OpenZeppelin's battle-tested implementations for:
 
-1. Install dependencies:
+- Upgradeable contracts (UUPS pattern)
+- Access control
+- Reentrancy protection
+- Safe math operations
 
-```bash
-npm install
-```
+## Contributing
 
-2. Run tests:
-
-```bash
-npm run testCMA
-```
-
-## Deployment
-
-For deployment instructions and configuration details, please refer to the main documentation in the arb-research repository.
+Please refer to the main arb-research repository for contribution guidelines.
