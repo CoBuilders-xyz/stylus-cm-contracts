@@ -7,8 +7,8 @@ import dotenv from 'dotenv';
 dotenv.config();
 const execPromise = util.promisify(exec);
 
-import cacheManagerABIJson from '../src/abis/cacheManagerABI.json';
-import arbWasmCacheABIJson from '../src/abis/arbWasmCacheABI.json';
+import cacheManagerABIJson from '../abis/external/cacheManager.abi.json';
+import arbWasmCacheABIJson from '../abis/external/arbWasmCache.abi.json';
 import type { CacheManagerAutomation } from '../build/typechain-types';
 
 export interface CMADeployment {

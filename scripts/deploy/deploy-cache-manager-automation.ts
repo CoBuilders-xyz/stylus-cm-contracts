@@ -1,6 +1,5 @@
-import { ethers, upgrades, network } from 'hardhat';
+import { ethers, network } from 'hardhat';
 import { getDeploymentConfig } from '../../config/deployment-config';
-import { GAS_LIMITS } from '../../config/constants';
 
 async function main() {
   console.log(`🚀 Starting deployment on network: ${network.name}`);
@@ -21,19 +20,15 @@ async function main() {
     'CacheManagerAutomation'
   );
 
-  const cacheManagerAutomation = await upgrades.deployProxy(
-    CacheManagerAutomation,
-    [config.cacheManagerAddress, config.arbWasmCacheAddress],
-    {
-      initializer: 'initialize',
-      kind: 'uups',
-    }
+  const cacheManagerAutomation = await CacheManagerAutomation.deploy(
+    config.cacheManagerAddress,
+    config.arbWasmCacheAddress
   );
 
   await cacheManagerAutomation.waitForDeployment();
-  const proxyAddress = await cacheManagerAutomation.getAddress();
+  const cmaAddress = await cacheManagerAutomation.getAddress();
 
-  console.log(`✅ CacheManagerAutomation deployed to: ${proxyAddress}`);
+  console.log(`✅ CacheManagerAutomation deployed to: ${cmaAddress}`);
 
   // Deploy BiddingEscrow
   console.log('\n📦 Deploying BiddingEscrow...');
@@ -47,7 +42,7 @@ async function main() {
   // Save deployment addresses
   const deploymentInfo = {
     network: network.name,
-    cacheManagerAutomation: proxyAddress,
+    cacheManagerAutomation: cmaAddress,
     biddingEscrow: escrowAddress,
     deployer: deployer.address,
     timestamp: new Date().toISOString(),

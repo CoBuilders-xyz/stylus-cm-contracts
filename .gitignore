@@ -12,6 +12,7 @@ test/db/*.db
 # Hardhat files
 /cache
 /artifacts
+/generated
 
 # TypeChain files
 /typechain

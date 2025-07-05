@@ -45,19 +45,37 @@ contracts/
 │   └── IExternalContracts.sol
 └── mocks/                   # Mock contracts for testing
 
+abis/                        # ABI Management System
+├── generated/               # Generated ABIs from our contracts
+│   ├── CacheManagerAutomation.abi.json
+│   ├── BiddingEscrow.abi.json
+│   └── I*.abi.json         # Interface ABIs
+└── external/                # External contract ABIs
+    ├── cacheManager.abi.json
+    └── arbWasmCache.abi.json
+
 config/                      # Configuration files
 ├── networks.ts              # Network configurations
 ├── constants.ts             # Contract constants
-└── deployment-config.ts     # Deployment configurations
+├── deployment-config.ts     # Deployment configurations
+└── abis.ts                  # ABI management utilities
 
 scripts/
-└── deploy/                  # Deployment scripts
-    └── deploy-cache-manager-automation.ts
+├── deploy/                  # Deployment scripts
+│   └── deploy-cache-manager-automation.ts
+└── utils/                   # Utility scripts
+    ├── generate-abis.ts     # Extract ABIs from compiled contracts
+    ├── generate-types.ts    # Generate TypeScript types from ABIs
+    └── verify-abis.ts       # Verify ABI compatibility
 
 test/                        # Test files
 ├── CacheManagerAutomation.test.ts
 ├── CacheManager.test.ts
 └── helpers.ts               # Test utilities
+
+build/                       # Build artifacts
+├── artifacts/               # Hardhat compilation artifacts
+└── typechain-types/         # Generated TypeScript types
 ```
 
 ## Development
@@ -99,11 +117,48 @@ npm run test:cm     # CacheManager tests
 npm run deploy:local    # Deploy to local network
 npm run deploy:sepolia  # Deploy to Arbitrum Sepolia
 
+# ABI Management
+npm run abis:generate   # Extract ABIs from compiled contracts
+npm run abis:verify     # Verify ABI compatibility
+npm run types:generate  # Generate TypeScript types from ABIs
+
+# Complete build process
+npm run build          # Compile + Generate ABIs + Generate Types
+
 # Clean build artifacts
 npm run clean
 
 # Generate TypeScript types
 npm run typechain
+```
+
+## ABI Management System
+
+The repository includes a comprehensive ABI management system that:
+
+- **Automatically extracts ABIs** from compiled contracts
+- **Organizes ABIs** into generated (our contracts) and external (third-party contracts)
+- **Generates TypeScript types** from all ABIs for type-safe contract interaction
+- **Verifies ABI compatibility** to ensure contract integration works correctly
+
+### ABI Structure
+
+- `abis/generated/`: ABIs extracted from our compiled contracts
+- `abis/external/`: ABIs for external contracts we interact with
+- `config/abis.ts`: Centralized ABI management utilities
+
+### Using ABIs in Code
+
+```typescript
+// Import the ABI management utilities
+import { ABIs, getContractInstance } from './config/abis';
+
+// Get a contract instance with type safety
+const contract = getContractInstance(
+  'CacheManagerAutomation',
+  contractAddress,
+  signer
+);
 ```
 
 ## Testing
@@ -143,6 +198,24 @@ Deployment configurations are managed in `config/deployment-config.ts`:
 - Gas limits and deployment parameters
 - Verification settings
 
+## Architecture
+
+### Non-Upgradeable Design
+
+The contracts use a **non-upgradeable architecture** for security and simplicity:
+
+- Direct contract deployment (no proxy patterns)
+- Immutable contract logic once deployed
+- Clear ownership and access control patterns
+
+### Type Safety
+
+The repository provides full TypeScript support:
+
+- **Generated types** from all contract ABIs
+- **Type-safe contract interactions**
+- **Compile-time validation** of contract calls
+
 ## Documentation
 
 Detailed documentation for these contracts can be found in:
@@ -154,10 +227,10 @@ Detailed documentation for these contracts can be found in:
 
 This repository uses OpenZeppelin's battle-tested implementations for:
 
-- Upgradeable contracts (UUPS pattern)
-- Access control
+- Access control (Ownable)
 - Reentrancy protection
 - Safe math operations
+- Escrow functionality
 
 ## Contributing
 
