@@ -43,15 +43,12 @@ export async function deployCMA(): Promise<CMADeployment> {
     'CacheManagerAutomation'
   );
 
-  const upgradableProxy = await hre.upgrades.deployProxy(
-    CacheManagerAutomationFactory,
-    [cacheManagerAddress, arbWasmCacheAddress],
-    {
-      initializer: 'initialize',
-    }
+  const cacheManagerAutomation = await CacheManagerAutomationFactory.deploy(
+    cacheManagerAddress,
+    arbWasmCacheAddress
   );
 
-  await upgradableProxy.waitForDeployment();
+  await cacheManagerAutomation.waitForDeployment();
 
   const cacheManager = new hre.ethers.Contract(
     cacheManagerAddress,
@@ -60,7 +57,7 @@ export async function deployCMA(): Promise<CMADeployment> {
   );
 
   return {
-    cacheManagerAutomation: upgradableProxy.connect(owner),
+    cacheManagerAutomation: cacheManagerAutomation.connect(owner),
     cacheManager,
     cacheManagerAddress,
     arbWasmCacheAddress,
@@ -307,14 +304,11 @@ export async function deployCMASepolia(): Promise<void> {
     'CacheManagerAutomationV2'
   );
 
-  const upgradableProxy = await hre.upgrades.deployProxy(
-    CacheManagerAutomationFactory,
-    [cacheManagerAddress, arbWasmCacheAddress],
-    {
-      initializer: 'initialize',
-    }
+  const cacheManagerAutomation = await CacheManagerAutomationFactory.deploy(
+    cacheManagerAddress,
+    arbWasmCacheAddress
   );
 
-  await upgradableProxy.waitForDeployment();
-  console.log('CMA deployed', await upgradableProxy.getAddress());
+  await cacheManagerAutomation.waitForDeployment();
+  console.log('CMA deployed', await cacheManagerAutomation.getAddress());
 }

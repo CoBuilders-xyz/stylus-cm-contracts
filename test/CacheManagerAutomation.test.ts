@@ -299,9 +299,6 @@ describe('cacheManagerAutomation', async function () {
         ).to.equal(cmaDeployment.arbWasmCacheAddress);
       });
     });
-    xdescribe('Upgradable', async function () {
-      it('Should be upgradable [TODO]', async function () {});
-    });
   });
 
   describe('Contract Management', function () {
@@ -975,6 +972,7 @@ describe('cacheManagerAutomation', async function () {
           await cmaDeployment.cacheManagerAutomation
             .connect(user)
             .getContracts();
+
         const initialUserContracts =
           fetchInitialUserContracts.length > 0
             ? fetchInitialUserContracts[0].contracts
@@ -1003,6 +1001,7 @@ describe('cacheManagerAutomation', async function () {
         const tx = await cmaDeployment.cacheManagerAutomation
           .connect(user)
           .placeBids(bidRequests);
+
         const receipt = await tx.wait();
         const events = logTransactionEvents(receipt);
         // expect to have 5 BidPlaced events
@@ -1023,8 +1022,9 @@ describe('cacheManagerAutomation', async function () {
         const userContracts = await cmaDeployment.cacheManagerAutomation
           .connect(user)
           .getContracts();
+
         expect(userContracts[0].contracts.length).to.equal(
-          initialUserContracts.length + bidRequests.length
+          initialUserContracts.length + contracts.length
         );
         expect(userContracts[0].user).to.equal(userAddress);
 
