@@ -22,19 +22,17 @@ contract CacheManagerAutomation is
     BiddingEscrow public escrow;
 
     // ------------------------------------------------------------------------
-    // Constants
+    // Configuration state variables (modifiable by owner)
     // ------------------------------------------------------------------------
-    uint256 private constant MAX_CONTRACTS_PER_USER = 50;
-    uint256 private constant MIN_MAX_BID_AMOUNT = 1;
-    uint256 private constant MIN_FUND_AMOUNT = 1;
-    uint256 private constant MAX_USER_FUNDS = 1 ether;
-    uint256 private constant MAX_BIDS_PER_ITERATION = 50;
-    uint256 private constant MAX_USERS_PER_PAGE = 100;
-
-    // Simplified bidding strategy constants
-    uint256 private constant CACHE_THRESHOLD = 98; // Start bidding when 98% full (10mb free for 512mb cache)
-    uint256 private constant HORIZON_SECONDS = 30 days; // Target 30 days to become competitive
-    uint192 private constant BID_INCREMENT = 1; // Bid increment for uniqueness
+    uint256 public maxContractsPerUser;
+    uint256 public minMaxBidAmount;
+    uint256 public minFundAmount;
+    uint256 public maxUserFunds;
+    uint256 public maxBidsPerIteration;
+    uint256 public maxUsersPerPage;
+    uint256 public cacheThreshold;
+    uint256 public horizonSeconds;
+    uint192 public bidIncrement;
 
     // ------------------------------------------------------------------------
     // State variables
@@ -57,6 +55,17 @@ contract CacheManagerAutomation is
         cacheManager = ICacheManager(_cacheManager);
         arbWasmCache = IArbWasmCache(_arbWasmCache);
         escrow = new BiddingEscrow();
+
+        // Initialize configuration parameters with default values
+        maxContractsPerUser = 50;
+        minMaxBidAmount = 1;
+        minFundAmount = 1;
+        maxUserFunds = 1 ether;
+        maxBidsPerIteration = 50;
+        maxUsersPerPage = 100;
+        cacheThreshold = 98; // Start bidding when 98% full (10mb free for 512mb cache)
+        horizonSeconds = 30 days; // Target 30 days to become competitive
+        bidIncrement = 1; // Bid increment for uniqueness
     }
 
     // ------------------------------------------------------------------------
@@ -66,6 +75,103 @@ contract CacheManagerAutomation is
     // ------------------------------------------------------------------------
     // Admin functions
     // ------------------------------------------------------------------------
+
+    /// @notice Set maximum contracts per user
+    /// @param _maxContractsPerUser New maximum contracts per user
+    function setMaxContractsPerUser(
+        uint256 _maxContractsPerUser
+    ) external onlyOwner {
+        require(
+            _maxContractsPerUser > 0,
+            'Max contracts per user must be greater than 0'
+        );
+        uint256 oldValue = maxContractsPerUser;
+        maxContractsPerUser = _maxContractsPerUser;
+        emit MaxContractsPerUserUpdated(oldValue, _maxContractsPerUser);
+    }
+
+    /// @notice Set minimum maximum bid amount
+    /// @param _minMaxBidAmount New minimum maximum bid amount
+    function setMinMaxBidAmount(uint256 _minMaxBidAmount) external onlyOwner {
+        require(
+            _minMaxBidAmount > 0,
+            'Min max bid amount must be greater than 0'
+        );
+        uint256 oldValue = minMaxBidAmount;
+        minMaxBidAmount = _minMaxBidAmount;
+        emit MinMaxBidAmountUpdated(oldValue, _minMaxBidAmount);
+    }
+
+    /// @notice Set minimum fund amount
+    /// @param _minFundAmount New minimum fund amount
+    function setMinFundAmount(uint256 _minFundAmount) external onlyOwner {
+        require(_minFundAmount > 0, 'Min fund amount must be greater than 0');
+        uint256 oldValue = minFundAmount;
+        minFundAmount = _minFundAmount;
+        emit MinFundAmountUpdated(oldValue, _minFundAmount);
+    }
+
+    /// @notice Set maximum user funds
+    /// @param _maxUserFunds New maximum user funds
+    function setMaxUserFunds(uint256 _maxUserFunds) external onlyOwner {
+        require(_maxUserFunds > 0, 'Max user funds must be greater than 0');
+        uint256 oldValue = maxUserFunds;
+        maxUserFunds = _maxUserFunds;
+        emit MaxUserFundsUpdated(oldValue, _maxUserFunds);
+    }
+
+    /// @notice Set maximum bids per iteration
+    /// @param _maxBidsPerIteration New maximum bids per iteration
+    function setMaxBidsPerIteration(
+        uint256 _maxBidsPerIteration
+    ) external onlyOwner {
+        require(
+            _maxBidsPerIteration > 0,
+            'Max bids per iteration must be greater than 0'
+        );
+        uint256 oldValue = maxBidsPerIteration;
+        maxBidsPerIteration = _maxBidsPerIteration;
+        emit MaxBidsPerIterationUpdated(oldValue, _maxBidsPerIteration);
+    }
+
+    /// @notice Set maximum users per page
+    /// @param _maxUsersPerPage New maximum users per page
+    function setMaxUsersPerPage(uint256 _maxUsersPerPage) external onlyOwner {
+        require(
+            _maxUsersPerPage > 0,
+            'Max users per page must be greater than 0'
+        );
+        uint256 oldValue = maxUsersPerPage;
+        maxUsersPerPage = _maxUsersPerPage;
+        emit MaxUsersPerPageUpdated(oldValue, _maxUsersPerPage);
+    }
+
+    /// @notice Set cache threshold percentage
+    /// @param _cacheThreshold New cache threshold (0-100)
+    function setCacheThreshold(uint256 _cacheThreshold) external onlyOwner {
+        require(_cacheThreshold <= 100, 'Cache threshold must be <= 100');
+        uint256 oldValue = cacheThreshold;
+        cacheThreshold = _cacheThreshold;
+        emit CacheThresholdUpdated(oldValue, _cacheThreshold);
+    }
+
+    /// @notice Set horizon seconds for bid decay calculation
+    /// @param _horizonSeconds New horizon seconds
+    function setHorizonSeconds(uint256 _horizonSeconds) external onlyOwner {
+        require(_horizonSeconds > 0, 'Horizon seconds must be greater than 0');
+        uint256 oldValue = horizonSeconds;
+        horizonSeconds = _horizonSeconds;
+        emit HorizonSecondsUpdated(oldValue, _horizonSeconds);
+    }
+
+    /// @notice Set bid increment for uniqueness
+    /// @param _bidIncrement New bid increment
+    function setBidIncrement(uint192 _bidIncrement) external onlyOwner {
+        require(_bidIncrement > 0, 'Bid increment must be greater than 0');
+        uint192 oldValue = bidIncrement;
+        bidIncrement = _bidIncrement;
+        emit BidIncrementUpdated(oldValue, _bidIncrement);
+    }
 
     // ------------------------------------------------------------------------
     // Contract externalfunctions (user)
@@ -77,11 +183,10 @@ contract CacheManagerAutomation is
         bool _enabled
     ) external payable {
         if (_contract == address(0)) revert InvalidAddress(); // TODO allow on only stylus contracts
-        if (_maxBid < MIN_MAX_BID_AMOUNT) revert InvalidBid();
+        if (_maxBid < minMaxBidAmount) revert InvalidBid();
 
         ContractConfig[] storage contracts = userContracts[msg.sender];
-        if (contracts.length >= MAX_CONTRACTS_PER_USER)
-            revert TooManyContracts();
+        if (contracts.length >= maxContractsPerUser) revert TooManyContracts();
 
         // Add new contract
         // Check if contract is already in the list
@@ -171,10 +276,10 @@ contract CacheManagerAutomation is
     }
 
     function fundBalance() external payable {
-        if (msg.value < MIN_FUND_AMOUNT) revert InvalidFundAmount();
+        if (msg.value < minFundAmount) revert InvalidFundAmount();
 
         uint256 currentBalance = escrow.depositsOf(msg.sender);
-        if (currentBalance + msg.value > MAX_USER_FUNDS)
+        if (currentBalance + msg.value > maxUserFunds)
             revert ExceedsMaxUserFunds();
 
         _updateUserBalance(msg.sender, msg.value);
@@ -201,7 +306,7 @@ contract CacheManagerAutomation is
     // Anyone can call this functions but the operator (owner) should be the only interested party on calling them
 
     function placeBids(BidRequest[] calldata _bidRequests) external {
-        if (_bidRequests.length > MAX_BIDS_PER_ITERATION) revert TooManyBids();
+        if (_bidRequests.length > maxBidsPerIteration) revert TooManyBids();
         for (uint256 i = 0; i < _bidRequests.length; i++) {
             BidResult memory result = _shouldBid(_bidRequests[i], i);
             if (!result.shouldBid) continue;
@@ -252,7 +357,7 @@ contract CacheManagerAutomation is
         }
 
         // Cap limit to prevent abuse (max 100 users per call)
-        uint256 maxLimit = MAX_USERS_PER_PAGE;
+        uint256 maxLimit = maxUsersPerPage;
         if (limit == 0 || limit > maxLimit) {
             limit = maxLimit;
         }
@@ -320,32 +425,37 @@ contract CacheManagerAutomation is
         } catch {}
 
         // CACHE NOT FULL CASE
-        // If cache is not full, return minBid. This is likely to be 0 for cacheUtilization<98%. For a 512mb cache, this means 10mb free space.
-        // We cant return 0 because minBid depends on contractSize, not cacheUsage and will fail if 2% of cache is not enough to cache the contract.
+        // If cache is not full, return 0.
 
-        if (cacheUtilization < CACHE_THRESHOLD) {
-            return minBid; // should be 0, if not the threshold should be modified to guarantee maxSizeContract fit in the remaining space.
+        // Why not minBid + increment?
+        // To avoid CMA users to compete with each other in a loop when cache is not full.
+        // The threshold should be set so that the maxSizeContract can fit in the free space, if that condition is true, then minBid will be 0.
+        // Otherwise, minBid will be != 0 but we will still bid 0 to make the bid fail and avoid competition.
+        // A threshold of 98% for a 512mb Cache means that there is 10mb free space, enough to hold any contract.
+
+        if (cacheUtilization < cacheThreshold) {
+            return 0;
         }
 
         // CACHE FULL CASE (>98% usage)
         // We make the user spend the minimum between:
-        // 1. The required bid so that the cache decays to minBid in a month
+        // 1. The required bid so that the cache decays to minBid in "horizonSeconds"
         // 2. The user's maxBid
 
         // Calculate decay value: minBid + decayRate * horizonSeconds
-        uint64 decayRate = 11574; // Default fallback: approximately 1 gwei per day (1e9 / 86400)
+        uint64 decayRate = 0;
         try cacheManager.decay() returns (uint64 rate) {
             decayRate = rate;
         } catch {
-            decayRate = 11574; // Default: approximately 1 gwei per day (1e9 / 86400)
+            decayRate = 0;
         }
 
         // Bid index * BID_INCREMENT is used to make the bid unique for all the contract bids in current block.
 
         uint256 decayValue = uint256(minBid) +
-            (uint256(decayRate) * HORIZON_SECONDS) +
+            (uint256(decayRate) * horizonSeconds) +
             bidIndex *
-            BID_INCREMENT;
+            bidIncrement;
 
         uint256 bidValue = decayValue < userMaxBid ? decayValue : userMaxBid;
 
