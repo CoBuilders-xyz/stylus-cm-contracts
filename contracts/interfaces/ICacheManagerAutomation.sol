@@ -17,6 +17,7 @@ interface ICacheManagerAutomation {
     struct BidResult {
         bool shouldBid;
         ContractConfig contractConfig;
+        uint192 bidAmount;
     }
     struct UserContractsData {
         address user;

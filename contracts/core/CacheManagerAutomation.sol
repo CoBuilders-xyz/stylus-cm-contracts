@@ -31,6 +31,11 @@ contract CacheManagerAutomation is
     uint256 private constant MAX_BIDS_PER_ITERATION = 50;
     uint256 private constant MAX_USERS_PER_PAGE = 100;
 
+    // Simplified bidding strategy constants
+    uint256 private constant CACHE_THRESHOLD = 98; // Start bidding when 98% full (10mb free for 512mb cache)
+    uint256 private constant HORIZON_SECONDS = 30 days; // Target 30 days to become competitive
+    uint192 private constant BID_INCREMENT = 1; // Bid increment for uniqueness
+
     // ------------------------------------------------------------------------
     // State variables
     // ------------------------------------------------------------------------
@@ -198,9 +203,13 @@ contract CacheManagerAutomation is
     function placeBids(BidRequest[] calldata _bidRequests) external {
         if (_bidRequests.length > MAX_BIDS_PER_ITERATION) revert TooManyBids();
         for (uint256 i = 0; i < _bidRequests.length; i++) {
-            BidResult memory result = _shouldBid(_bidRequests[i]);
+            BidResult memory result = _shouldBid(_bidRequests[i], i);
             if (!result.shouldBid) continue;
-            _placeBid(_bidRequests[i].user, result.contractConfig);
+            _placeBid(
+                _bidRequests[i].user,
+                result.contractConfig,
+                result.bidAmount
+            );
         }
     }
 
@@ -288,9 +297,65 @@ contract CacheManagerAutomation is
     // Contract internal functions
     // ------------------------------------------------------------------------
 
+    /// @dev Calculate bid amount using simplified decay-aware logic
+    /// @param userMaxBid User's maximum willing bid amount
+    /// @param bidIndex Index for uniqueness
+    /// @param minBid Minimum bid amount
+    /// @return calculatedBid The amount to bid
+    function _calculateBidAmount(
+        uint256 userMaxBid,
+        uint256 bidIndex,
+        uint192 minBid
+    ) internal view returns (uint192 calculatedBid) {
+        // Get cache utilization
+        uint256 cacheUtilization = 0;
+        try cacheManager.cacheSize() returns (uint64 capacity) {
+            try cacheManager.queueSize() returns (uint64 currentSize) {
+                if (capacity > 0) {
+                    cacheUtilization =
+                        (uint256(currentSize) * 100) /
+                        uint256(capacity);
+                }
+            } catch {}
+        } catch {}
+
+        // CACHE NOT FULL CASE
+        // If cache is not full, return minBid. This is likely to be 0 for cacheUtilization<98%. For a 512mb cache, this means 10mb free space.
+        // We cant return 0 because minBid depends on contractSize, not cacheUsage and will fail if 2% of cache is not enough to cache the contract.
+
+        if (cacheUtilization < CACHE_THRESHOLD) {
+            return minBid; // should be 0, if not the threshold should be modified to guarantee maxSizeContract fit in the remaining space.
+        }
+
+        // CACHE FULL CASE (>98% usage)
+        // We make the user spend the minimum between:
+        // 1. The required bid so that the cache decays to minBid in a month
+        // 2. The user's maxBid
+
+        // Calculate decay value: minBid + decayRate * horizonSeconds
+        uint64 decayRate = 11574; // Default fallback: approximately 1 gwei per day (1e9 / 86400)
+        try cacheManager.decay() returns (uint64 rate) {
+            decayRate = rate;
+        } catch {
+            decayRate = 11574; // Default: approximately 1 gwei per day (1e9 / 86400)
+        }
+
+        // Bid index * BID_INCREMENT is used to make the bid unique for all the contract bids in current block.
+
+        uint256 decayValue = uint256(minBid) +
+            (uint256(decayRate) * HORIZON_SECONDS) +
+            bidIndex *
+            BID_INCREMENT;
+
+        uint256 bidValue = decayValue < userMaxBid ? decayValue : userMaxBid;
+
+        return uint192(bidValue);
+    }
+
     /// @notice Internal function to check if a contract needs bidding
     function _shouldBid(
-        BidRequest memory bidRequest
+        BidRequest memory bidRequest,
+        uint256 bidIndex
     ) internal view returns (BidResult memory) {
         address user = bidRequest.user;
         address contractAddress = bidRequest.contractAddress;
@@ -301,13 +366,13 @@ contract CacheManagerAutomation is
 
         // Are addresses valid?
         if (user == address(0) || contractAddress == address(0))
-            return BidResult(false, ContractConfig(address(0), 0, false));
+            return BidResult(false, ContractConfig(address(0), 0, false), 0);
 
         // Address is valid
 
         // Is contract already cached?
         if (arbWasmCache.codehashIsCached(contractAddress.codehash))
-            return BidResult(false, ContractConfig(address(0), 0, false));
+            return BidResult(false, ContractConfig(address(0), 0, false), 0);
 
         // Address is valid & contract is not cached
 
@@ -317,65 +382,84 @@ contract CacheManagerAutomation is
             if (contracts[j].contractAddress == contractAddress) {
                 // Is contract enabled?
                 if (!contracts[j].enabled)
-                    return BidResult(false, contracts[j]);
+                    return BidResult(false, contracts[j], 0);
 
-                // Address is valid & contract is not cached & contract belongs to user & contract is enabled
-
-                // TODO when bidding strategy is defined, fund checks will change.
-
-                // Is bid amount within max bid?
+                // Calculate bid amount
                 uint192 minBid = cacheManager.getMinBid(contractAddress);
-                if (minBid > contracts[j].maxBid)
-                    return BidResult(false, contracts[j]);
+                uint192 calculatedBid = _calculateBidAmount(
+                    contracts[j].maxBid,
+                    bidIndex,
+                    minBid
+                );
 
-                // Address is valid & contract is not cached & contract belongs to user & contract is enabled & minBid <= maxBid
+                // Check if bid is valid
+                if (calculatedBid < minBid)
+                    return BidResult(false, contracts[j], 0);
 
-                // Is user balance enough to bid?
-                uint256 userBalance = escrow.depositsOf(user);
-                if (minBid > userBalance) return BidResult(false, contracts[j]);
-                // Address is valid & contract is not cached & contract belongs to user & contract is enabled & minBid <= maxBid & userBalance => minBid
+                // Check balance only if bidding > 0
+                if (calculatedBid > 0) {
+                    uint256 userBalance = escrow.depositsOf(user);
+                    if (calculatedBid > userBalance)
+                        return BidResult(false, contracts[j], 0);
+                }
 
-                return BidResult(true, contracts[j]);
+                return BidResult(true, contracts[j], calculatedBid);
             }
         }
-        return BidResult(false, ContractConfig(address(0), 0, false)); // Contract not found
+        return BidResult(false, ContractConfig(address(0), 0, false), 0); // Contract not found
     }
 
     function _placeBid(
         address user,
-        ContractConfig memory contractConfig
+        ContractConfig memory contractConfig,
+        uint192 bidAmount
     ) internal {
         address contractAddress = contractConfig.contractAddress;
         uint256 maxBid = contractConfig.maxBid;
-        uint192 minBid = cacheManager.getMinBid(contractAddress);
 
-        try escrow.withdrawForBid(payable(user), minBid) {
-            try cacheManager.placeBid{value: minBid}(contractAddress) {
+        if (bidAmount == 0) {
+            // Free bid - place directly without escrow withdrawal
+            try cacheManager.placeBid{value: 0}(contractAddress) {
                 uint256 userBalance = escrow.depositsOf(user);
-                emit BidPlaced(
-                    user,
-                    contractAddress,
-                    minBid,
-                    maxBid,
-                    userBalance
-                );
+                emit BidPlaced(user, contractAddress, 0, maxBid, userBalance);
             } catch {
-                // Return bid amount to user if bid placement fails
-                escrow.deposit{value: minBid}(user);
                 emit BidError(
                     user,
                     contractAddress,
-                    minBid,
-                    'Bid placement failed'
+                    0,
+                    'Free bid placement failed'
                 );
             }
-        } catch {
-            emit BidError(
-                user,
-                contractAddress,
-                minBid,
-                'Insufficient balance'
-            );
+        } else {
+            // Paid bid - withdraw from escrow and place bid
+            try escrow.withdrawForBid(payable(user), bidAmount) {
+                try cacheManager.placeBid{value: bidAmount}(contractAddress) {
+                    uint256 userBalance = escrow.depositsOf(user);
+                    emit BidPlaced(
+                        user,
+                        contractAddress,
+                        bidAmount,
+                        maxBid,
+                        userBalance
+                    );
+                } catch {
+                    // Return bid amount to user if bid placement fails
+                    escrow.deposit{value: bidAmount}(user);
+                    emit BidError(
+                        user,
+                        contractAddress,
+                        bidAmount,
+                        'Bid placement failed'
+                    );
+                }
+            } catch {
+                emit BidError(
+                    user,
+                    contractAddress,
+                    bidAmount,
+                    'Insufficient balance'
+                );
+            }
         }
     }
 
