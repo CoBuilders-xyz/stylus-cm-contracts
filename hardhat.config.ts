@@ -1,33 +1,12 @@
 import { HardhatUserConfig } from 'hardhat/config';
 import '@nomicfoundation/hardhat-toolbox';
 import '@openzeppelin/hardhat-upgrades';
-import dotenv from 'dotenv';
-dotenv.config();
+import { networks } from './config/networks';
 
 const config: HardhatUserConfig = {
-  networks: {
-    hardhat: {},
-    localL1: {
-      url: 'http://localhost:8545',
-      accounts: [process.env.ARBPRE_PK || ''],
-    },
-    localArb: {
-      url: 'http://localhost:8547',
-      accounts: [
-        process.env.ARBPRE_PK || '',
-        process.env.ARBLOC_OWNER_PK || '',
-      ],
-    },
-    arbitrumSepolia: {
-      url: 'https://arb-sepolia.g.alchemy.com/v2/uEQNrf1PSgpUcyWrvB_UjFl5hTWATpEz',
-      accounts: [process.env.USER_PK || '', process.env.USER_PK || ''],
-    },
-  },
+  networks,
   solidity: {
     compilers: [
-      {
-        version: '0.8.28',
-      },
       {
         version: '0.8.30',
         settings: {
@@ -40,7 +19,14 @@ const config: HardhatUserConfig = {
     ],
   },
   paths: {
-    sources: './src/contracts',
+    sources: './contracts',
+    artifacts: 'build/artifacts',
+    cache: 'build/cache',
+    tests: './test',
+  },
+  typechain: {
+    outDir: 'build/typechain-types',
+    target: 'ethers-v6',
   },
 };
 

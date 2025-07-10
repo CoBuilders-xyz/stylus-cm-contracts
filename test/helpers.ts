@@ -7,13 +7,12 @@ import dotenv from 'dotenv';
 dotenv.config();
 const execPromise = util.promisify(exec);
 
-import cacheManagerABIJson from '../src/abis/cacheManagerABI.json';
-import arbWasmCacheABIJson from '../src/abis/arbWasmCacheABI.json';
-import type { CacheManagerAutomationV2 } from '../typechain-types';
-import { ICacheManager__factory } from '../typechain-types/factories/src/contracts/interfaces/IExternalContracts.sol';
+import cacheManagerABIJson from '../abis/external/cacheManager.abi.json';
+import arbWasmCacheABIJson from '../abis/external/arbWasmCache.abi.json';
+import type { CacheManagerAutomation } from '../build/typechain-types';
 
 export interface CMADeployment {
-  cacheManagerAutomation: CacheManagerAutomationV2;
+  cacheManagerAutomation: CacheManagerAutomation;
   cacheManager: Contract;
   cacheManagerAddress: string;
   arbWasmCacheAddress: string;
@@ -41,18 +40,15 @@ export async function deployCMA(): Promise<CMADeployment> {
   );
 
   const CacheManagerAutomationFactory = await hre.ethers.getContractFactory(
-    'CacheManagerAutomationV2'
+    'CacheManagerAutomation'
   );
 
-  const upgradableProxy = await hre.upgrades.deployProxy(
-    CacheManagerAutomationFactory,
-    [cacheManagerAddress, arbWasmCacheAddress],
-    {
-      initializer: 'initialize',
-    }
+  const cacheManagerAutomation = await CacheManagerAutomationFactory.deploy(
+    cacheManagerAddress,
+    arbWasmCacheAddress
   );
 
-  await upgradableProxy.waitForDeployment();
+  await cacheManagerAutomation.waitForDeployment();
 
   const cacheManager = new hre.ethers.Contract(
     cacheManagerAddress,
@@ -61,7 +57,7 @@ export async function deployCMA(): Promise<CMADeployment> {
   );
 
   return {
-    cacheManagerAutomation: upgradableProxy.connect(owner),
+    cacheManagerAutomation: cacheManagerAutomation.connect(owner),
     cacheManager,
     cacheManagerAddress,
     arbWasmCacheAddress,
@@ -85,7 +81,7 @@ export async function deployDummyWASMContracts(
 ): Promise<string[]> {
   try {
     const { stdout, stderr } = await execPromise(
-      `bash test/scripts/deploy-dummy-wasm.sh -e .env -i ${amount}`
+      `bash test/utils/deploy-dummy-wasm.sh -e .env -i ${amount}`
     );
 
     if (stderr) {
@@ -308,14 +304,11 @@ export async function deployCMASepolia(): Promise<void> {
     'CacheManagerAutomationV2'
   );
 
-  const upgradableProxy = await hre.upgrades.deployProxy(
-    CacheManagerAutomationFactory,
-    [cacheManagerAddress, arbWasmCacheAddress],
-    {
-      initializer: 'initialize',
-    }
+  const cacheManagerAutomation = await CacheManagerAutomationFactory.deploy(
+    cacheManagerAddress,
+    arbWasmCacheAddress
   );
 
-  await upgradableProxy.waitForDeployment();
-  console.log('CMA deployed', await upgradableProxy.getAddress());
+  await cacheManagerAutomation.waitForDeployment();
+  console.log('CMA deployed', await cacheManagerAutomation.getAddress());
 }

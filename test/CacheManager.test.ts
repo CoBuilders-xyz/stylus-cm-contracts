@@ -26,6 +26,7 @@ describe('CacheManager Contract Tests', function () {
   let cacheManager: CacheManagerContract;
   let owner: HardhatEthersSigner;
   let user1: HardhatEthersSigner;
+  let dummyContracts: string[];
 
   // Constants
   const CACHE_MANAGER_ADDRESS = process.env.CACHE_MANAGER_ADDRESS || '';
@@ -67,6 +68,7 @@ describe('CacheManager Contract Tests', function () {
       CACHE_MANAGER_ADDRESS,
       owner
     )) as unknown as CacheManagerContract;
+    dummyContracts = await deployDummyWASMContracts(3);
   });
 
   // Evict all contracts from the cache manager
@@ -278,7 +280,7 @@ describe('CacheManager Contract Tests', function () {
       ).to.be.true;
     });
 
-    it.only('Decay should increment bid weight for deciding eviction', async function () {
+    it('Decay should increment bid weight for deciding eviction', async function () {
       const decay = await cacheManager.decay();
       console.log(`Current decay rate: ${decay}`);
       expect(decay).to.be.gte(0);
