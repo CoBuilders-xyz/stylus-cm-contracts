@@ -17,6 +17,7 @@ interface ICacheManagerAutomation {
     struct BidResult {
         bool shouldBid;
         ContractConfig contractConfig;
+        uint192 bidAmount;
     }
     struct UserContractsData {
         address user;
@@ -91,6 +92,17 @@ interface ICacheManagerAutomation {
         uint256 timestamp
     );
 
+    // Parameter change events
+    event MaxContractsPerUserUpdated(uint256 oldValue, uint256 newValue);
+    event MinMaxBidAmountUpdated(uint256 oldValue, uint256 newValue);
+    event MinFundAmountUpdated(uint256 oldValue, uint256 newValue);
+    event MaxUserFundsUpdated(uint256 oldValue, uint256 newValue);
+    event MaxBidsPerIterationUpdated(uint256 oldValue, uint256 newValue);
+    event MaxUsersPerPageUpdated(uint256 oldValue, uint256 newValue);
+    event CacheThresholdUpdated(uint256 oldValue, uint256 newValue);
+    event HorizonSecondsUpdated(uint256 oldValue, uint256 newValue);
+    event BidIncrementUpdated(uint192 oldValue, uint192 newValue);
+
     // Debug events
     event DebugBidCheck(
         address indexed user,
@@ -140,4 +152,15 @@ interface ICacheManagerAutomation {
     ) external view returns (UserContractsData[] memory userData, bool hasMore);
     function getTotalUsersCount() external view returns (uint256);
     function getUserAtIndex(uint256 index) external view returns (address);
+
+    // Parameter setter functions
+    function setMaxContractsPerUser(uint256 _maxContractsPerUser) external;
+    function setMinMaxBidAmount(uint256 _minMaxBidAmount) external;
+    function setMinFundAmount(uint256 _minFundAmount) external;
+    function setMaxUserFunds(uint256 _maxUserFunds) external;
+    function setMaxBidsPerIteration(uint256 _maxBidsPerIteration) external;
+    function setMaxUsersPerPage(uint256 _maxUsersPerPage) external;
+    function setCacheThreshold(uint256 _cacheThreshold) external;
+    function setHorizonSeconds(uint256 _horizonSeconds) external;
+    function setBidIncrement(uint192 _bidIncrement) external;
 }
