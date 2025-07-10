@@ -4,9 +4,17 @@
   "description": "",
   "main": "",
   "scripts": {
-    "testCMA": "npx hardhat test test/CacheManagerAutomation.test.ts --network localArb",
-    "testCMAV2": "npx hardhat test test/CacheManagerAutomationV2.test.ts --network localArb",
-    "testCM": "npx hardhat test test/CacheManager.test.ts --network localArb"
+    "compile": "npx hardhat compile",
+    "test": "npx hardhat test",
+    "test:cma": "npx hardhat test test/CacheManagerAutomation.test.ts --network localArb",
+    "test:cm": "npx hardhat test test/CacheManager.test.ts --network localArb",
+    "deploy:local": "npx hardhat run scripts/deploy/deploy-cache-manager-automation.ts --network localArb",
+    "deploy:sepolia": "npx hardhat run scripts/deploy/deploy-cache-manager-automation.ts --network arbitrumSepolia",
+    "clean": "npx hardhat clean",
+    "typechain": "npx hardhat typechain",
+    "types:external": "npx ts-node scripts/utils/generate-types.ts",
+    "abis:verify": "npx ts-node scripts/utils/verify-abis.ts",
+    "build": "npm run compile && npm run types:external"
   },
   "repository": {
     "type": "git",
@@ -16,7 +24,9 @@
   "license": "ISC",
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
-    "hardhat": "^2.22.19"
+    "hardhat": "^2.22.19",
+    "ts-node": "^10.9.1",
+    "typechain": "^8.3.2"
   },
   "dependencies": {
     "@chainlink/contracts": "^1.3.0",

@@ -3,25 +3,20 @@ pragma solidity 0.8.30;
 
 // OpenZeppelin
 import {EnumerableSet} from '@openzeppelin/contracts/utils/structs/EnumerableSet.sol';
-// OpenZeppelin
-import {Initializable} from '@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol';
-import {UUPSUpgradeable} from '@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol';
-import {OwnableUpgradeable} from '@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol';
-import {ReentrancyGuardUpgradeable} from '@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol';
+import {Ownable} from '@openzeppelin/contracts/access/Ownable.sol';
+import {ReentrancyGuard} from '@openzeppelin/contracts/security/ReentrancyGuard.sol';
 import {BiddingEscrow} from './BiddingEscrow.sol';
 
 // Interfaces
-import './interfaces/IExternalContracts.sol';
-import './interfaces/ICacheManagerAutomationV2.sol';
+import '../interfaces/IExternalContracts.sol';
+import '../interfaces/ICacheManagerAutomation.sol';
 
 /// @title Cache Manager Automation
 /// @notice A automation contract that manages user bids for contract caching in the Stylus VM
-contract CacheManagerAutomationV2 is
-    ICacheManagerAutomationV2,
-    Initializable,
-    UUPSUpgradeable,
-    OwnableUpgradeable,
-    ReentrancyGuardUpgradeable
+contract CacheManagerAutomation is
+    ICacheManagerAutomation,
+    Ownable,
+    ReentrancyGuard
 {
     using EnumerableSet for EnumerableSet.AddressSet;
     BiddingEscrow public escrow;
@@ -46,37 +41,18 @@ contract CacheManagerAutomationV2 is
     EnumerableSet.AddressSet private usersWithContracts;
 
     // ------------------------------------------------------------------------
-    // Structs
+    // Constructor
     // ------------------------------------------------------------------------
 
-    // ------------------------------------------------------------------------
-    // Modifiers
-    // ------------------------------------------------------------------------
-
-    // ------------------------------------------------------------------------
-    // Initializer
-    // ------------------------------------------------------------------------
-
-    /// @notice Initializes the upgradeable contract
-    function initialize(
-        address _cacheManager,
-        address _arbWasmCache
-    ) public initializer {
+    /// @notice Initializes the contract
+    constructor(address _cacheManager, address _arbWasmCache) {
         if (_cacheManager == address(0)) revert InvalidAddress();
         if (_arbWasmCache == address(0)) revert InvalidAddress();
-
-        __Ownable_init(); // Upgradeable Ownable
-        __ReentrancyGuard_init(); // Upgradeable Reentrancy Guard
 
         cacheManager = ICacheManager(_cacheManager);
         arbWasmCache = IArbWasmCache(_arbWasmCache);
         escrow = new BiddingEscrow();
     }
-
-    // @notice Required for UUPS upgrades
-    function _authorizeUpgrade(
-        address newImplementation
-    ) internal override onlyOwner {}
 
     // ------------------------------------------------------------------------
     // Emergency functions

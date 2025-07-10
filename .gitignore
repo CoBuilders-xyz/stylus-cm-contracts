@@ -3,8 +3,8 @@ out
 bin
 target
 node_modules
-node_modules
 .env
+addresses.txt
 
 #Test suite
 test/db/*.db
@@ -12,6 +12,7 @@ test/db/*.db
 # Hardhat files
 /cache
 /artifacts
+/generated
 
 # TypeChain files
 /typechain
@@ -26,3 +27,6 @@ ignition/deployments/chain-31337
 
 # OpenZeppelin
 .openzeppelin
+
+# Build files
+/build
