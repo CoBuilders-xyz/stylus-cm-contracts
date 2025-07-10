@@ -30,20 +30,10 @@ async function main() {
 
   console.log(`✅ CacheManagerAutomation deployed to: ${cmaAddress}`);
 
-  // Deploy BiddingEscrow
-  console.log('\n📦 Deploying BiddingEscrow...');
-  const BiddingEscrow = await ethers.getContractFactory('BiddingEscrow');
-  const biddingEscrow = await BiddingEscrow.deploy();
-  await biddingEscrow.waitForDeployment();
-  const escrowAddress = await biddingEscrow.getAddress();
-
-  console.log(`✅ BiddingEscrow deployed to: ${escrowAddress}`);
-
   // Save deployment addresses
   const deploymentInfo = {
     network: network.name,
     cacheManagerAutomation: cmaAddress,
-    biddingEscrow: escrowAddress,
     deployer: deployer.address,
     timestamp: new Date().toISOString(),
   };

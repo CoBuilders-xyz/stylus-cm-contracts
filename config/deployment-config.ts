@@ -14,6 +14,14 @@ export interface DeploymentConfig {
 }
 
 export const deploymentConfigs: Record<string, DeploymentConfig> = {
+  arbitrumOne: {
+    cacheManagerAddress: CACHE_MANAGER_ADDRESSES.arbitrumOne,
+    arbWasmCacheAddress: ARB_WASM_CACHE_ADDRESSES.arbitrumOne,
+    maxContractsPerUser: DEFAULT_CONFIG.maxContractsPerUser,
+    maxUserFunds: DEFAULT_CONFIG.maxUserFunds,
+    upgradeDelay: DEFAULT_CONFIG.upgradeDelay,
+    verify: true,
+  },
   arbitrumSepolia: {
     cacheManagerAddress: CACHE_MANAGER_ADDRESSES.arbitrumSepolia,
     arbWasmCacheAddress: ARB_WASM_CACHE_ADDRESSES.arbitrumSepolia,
