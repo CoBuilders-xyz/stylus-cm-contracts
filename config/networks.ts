@@ -15,8 +15,12 @@ export const networks: NetworksUserConfig = {
     accounts: [process.env.ARBPRE_PK || '', process.env.ARBLOC_OWNER_PK || ''],
   },
   arbitrumSepolia: {
-    url: 'https://arb-sepolia.g.alchemy.com/v2/uEQNrf1PSgpUcyWrvB_UjFl5hTWATpEz',
-    accounts: [process.env.USER_PK || ''],
+    url: process.env.SEPOLIA_RPC,
+    accounts: [process.env.SEPOLIA_USER_PK || ''],
+  },
+  arbitrumOne: {
+    url: process.env.ARBITRUM_RPC,
+    accounts: [process.env.ARBITRUM_USER_PK || ''],
   },
 };
 
