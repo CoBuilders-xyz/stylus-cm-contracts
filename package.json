@@ -10,6 +10,7 @@
     "test:cm": "npx hardhat test test/CacheManager.test.ts --network localArb",
     "deploy:local": "npx hardhat run scripts/deploy/deploy-cache-manager-automation.ts --network localArb",
     "deploy:sepolia": "npx hardhat run scripts/deploy/deploy-cache-manager-automation.ts --network arbitrumSepolia",
+    "deploy:arbitrum": "npx hardhat run scripts/deploy/deploy-cache-manager-automation.ts --network arbitrumOne",
     "clean": "npx hardhat clean",
     "typechain": "npx hardhat typechain",
     "types:external": "npx ts-node scripts/utils/generate-types.ts",
