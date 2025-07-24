@@ -2,13 +2,15 @@
 export const CACHE_MANAGER_ADDRESSES = {
   arbitrumOne: '0x51dedbd2f190e0696afbee5e60bfde96d86464ec',
   arbitrumSepolia: '0x0c9043d042ab52cfa8d0207459260040cca54253',
-  localArb: '0x0f1f89aaf1c6fdb7ff9d361e4388f5f3997f12a8', // Usually the address for nitro-testnode
+  localArb: '0x0f1f89aaf1c6fdb7ff9d361e4388f5f3997f12a8',
+  superposition: '0xe3092C5d44BcB222B458d9212E608E0e8fE37591',
 };
 
 export const ARB_WASM_CACHE_ADDRESSES = {
   arbitrumOne: '0x0000000000000000000000000000000000000072',
   arbitrumSepolia: '0x0000000000000000000000000000000000000072',
   localArb: '0x0000000000000000000000000000000000000072',
+  superposition: '0x0000000000000000000000000000000000000072',
 };
 
 // Contract configuration defaults

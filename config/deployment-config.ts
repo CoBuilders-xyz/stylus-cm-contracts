@@ -38,6 +38,14 @@ export const deploymentConfigs: Record<string, DeploymentConfig> = {
     upgradeDelay: 0, // No delay for local testing
     verify: false,
   },
+  superposition: {
+    cacheManagerAddress: CACHE_MANAGER_ADDRESSES.superposition,
+    arbWasmCacheAddress: ARB_WASM_CACHE_ADDRESSES.superposition,
+    maxContractsPerUser: DEFAULT_CONFIG.maxContractsPerUser,
+    maxUserFunds: DEFAULT_CONFIG.maxUserFunds,
+    upgradeDelay: DEFAULT_CONFIG.upgradeDelay,
+    verify: true,
+  },
   hardhat: {
     cacheManagerAddress: '0x1234567890123456789012345678901234567890',
     arbWasmCacheAddress: '0x1234567890123456789012345678901234567890',
