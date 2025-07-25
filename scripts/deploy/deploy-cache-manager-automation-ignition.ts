@@ -1,7 +1,9 @@
 import hre from 'hardhat';
-import CacheManagerAutomationModule from '../../ignition/modules/CacheManagerAutomation';
+import { createCacheManagerAutomationModule } from '../../ignition/modules/CacheManagerAutomation';
 import { getDeploymentConfig } from '../../config/deployment-config';
 import { ignition as ignitionConfig } from '../../config/ignition';
+import * as fs from 'fs';
+import * as path from 'path';
 
 async function main() {
   const networkName = hre.network.name;
@@ -9,18 +11,25 @@ async function main() {
 
   // Get network-specific configuration
   const config = getDeploymentConfig(networkName);
+  const packageJsonPath = path.join(__dirname, '../../package.json');
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+  const version = packageJson.version.replace(/\./g, '_');
 
   console.log(`📋 Using configuration:`);
   console.log(`   Cache Manager Address: ${config.cacheManagerAddress}`);
   console.log(`   ARB WASM Cache Address: ${config.arbWasmCacheAddress}`);
 
   try {
+    // Create version-specific module
+    const CacheManagerAutomationModule =
+      createCacheManagerAutomationModule(version);
+
     // Deploy with network-specific parameters
     const { cacheManagerAutomation } = await hre.ignition.deploy(
       CacheManagerAutomationModule,
       {
         parameters: {
-          CacheManagerAutomation: {
+          [`CacheManagerAutomation_${version}`]: {
             cacheManagerAddress: config.cacheManagerAddress,
             arbWasmCacheAddress: config.arbWasmCacheAddress,
           },
@@ -34,6 +43,7 @@ async function main() {
 
     // Display deployment summary
     console.log('\n📊 Deployment Summary:');
+    console.log(`   Version: ${packageJson.version}`);
     console.log(`   Network: ${networkName}`);
     console.log(`   Contract Address: ${deployedAddress}`);
     console.log(`   Cache Manager: ${config.cacheManagerAddress}`);
