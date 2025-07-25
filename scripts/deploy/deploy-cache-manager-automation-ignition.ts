@@ -1,6 +1,7 @@
 import hre from 'hardhat';
 import CacheManagerAutomationModule from '../../ignition/modules/CacheManagerAutomation';
 import { getDeploymentConfig } from '../../config/deployment-config';
+import { ignition as ignitionConfig } from '../../config/ignition';
 
 async function main() {
   const networkName = hre.network.name;
@@ -24,6 +25,7 @@ async function main() {
             arbWasmCacheAddress: config.arbWasmCacheAddress,
           },
         },
+        config: ignitionConfig,
       }
     );
 
