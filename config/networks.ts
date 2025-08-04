@@ -8,15 +8,23 @@ export const networks: NetworksUserConfig = {
   },
   localL1: {
     url: 'http://localhost:8545',
-    accounts: [process.env.ARBPRE_PK || ''],
+    accounts: [process.env.ARB_LOCAL_FUNDED_PK || ''],
   },
   localArb: {
     url: 'http://localhost:8547',
-    accounts: [process.env.ARBPRE_PK || '', process.env.ARBLOC_OWNER_PK || ''],
+    accounts: [process.env.ARB_LOCAL_FUNDED_PK || ''],
   },
   arbitrumSepolia: {
-    url: 'https://arb-sepolia.g.alchemy.com/v2/uEQNrf1PSgpUcyWrvB_UjFl5hTWATpEz',
-    accounts: [process.env.USER_PK || ''],
+    url: process.env.ARB_SEPOLIA_RPC,
+    accounts: [process.env.ARB_SEPOLIA_FUNDED_PK || ''],
+  },
+  arbitrumOne: {
+    url: process.env.ARB_ONE_RPC,
+    accounts: [process.env.ARB_ONE_FUNDED_PK || ''],
+  },
+  superposition: {
+    url: process.env.SUPERPOSITION_RPC,
+    accounts: [process.env.SUPERPOSITION_FUNDED_PK || ''],
   },
 };
 
