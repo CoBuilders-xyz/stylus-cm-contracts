@@ -30,3 +30,5 @@ ignition/deployments/chain-31337
 
 # Build files
 /build
+
+/ignition/deployments/chain-412346
