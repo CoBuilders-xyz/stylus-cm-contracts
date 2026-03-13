@@ -14,3 +14,10 @@ interface ICacheManager {
 interface IArbWasmCache {
     function codehashIsCached(bytes32 codehash) external view returns (bool);
 }
+
+/// @notice Interface for the Arbitrum WASM contract
+interface IArbWasm {
+    function activateProgram(
+        address program
+    ) external payable returns (uint16 version, uint256 dataFee);
+}
