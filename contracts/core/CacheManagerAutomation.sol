@@ -282,7 +282,6 @@ contract CacheManagerAutomation is
                 return;
             }
         }
-        revert ContractNotFound();
     }
 
     function removeContract(address _contract) external {
