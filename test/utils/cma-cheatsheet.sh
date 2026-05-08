@@ -10,9 +10,9 @@ USER_PK=
 ADMIN_PK=0xb6b15c8cb491557369f3c7d2c287b053eb229daa9c22138887752191c9520659 # Local Funded Account
 L2OWNER_PK=0xdc04c5399f82306ec4b4d654a342f40e2e0620fe39950d967e1e574b32d4c # Local L2 Owner
 
-cast send $CMA_ADDRESS "insertContract(address, uint256, bool)" $DUMMY $(cast to-wei 0.000001) true --value  $(cast to-wei 0.00001) --private-key $USER_PK --rpc-url $RPC        
+cast send $CMA_ADDRESS "insertContract(address, uint256, bool, bool, uint256)" $DUMMY $(cast to-wei 0.000001) true false 0 --value  $(cast to-wei 0.00001) --private-key $USER_PK --rpc-url $RPC
 
-cast send $CMA_ADDRESS "updateContract(address, uint256, bool)" $DUMMY $(cast to-wei 0.001) true --private-key $USER_PK --rpc-url $RPC       
+cast send $CMA_ADDRESS "updateContract(address, uint256, bool, bool, uint256)" $DUMMY $(cast to-wei 0.001) true false 0 --private-key $USER_PK --rpc-url $RPC
 
 cast send $CMA_ADDRESS "removeAllContracts()" --private-key $USER_PK --rpc-url $RPC       
 

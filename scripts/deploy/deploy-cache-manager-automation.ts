@@ -22,7 +22,8 @@ async function main() {
 
   const cacheManagerAutomation = await CacheManagerAutomation.deploy(
     config.cacheManagerAddress,
-    config.arbWasmCacheAddress
+    config.arbWasmCacheAddress,
+    config.arbWasmAddress
   );
 
   await cacheManagerAutomation.waitForDeployment();

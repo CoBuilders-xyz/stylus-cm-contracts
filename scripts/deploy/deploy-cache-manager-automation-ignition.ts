@@ -18,6 +18,7 @@ async function main() {
   console.log(`📋 Using configuration:`);
   console.log(`   Cache Manager Address: ${config.cacheManagerAddress}`);
   console.log(`   ARB WASM Cache Address: ${config.arbWasmCacheAddress}`);
+  console.log(`   ARB WASM Address: ${config.arbWasmAddress}`);
 
   try {
     // Create version-specific module
@@ -32,6 +33,7 @@ async function main() {
           [`CacheManagerAutomation_${version}`]: {
             cacheManagerAddress: config.cacheManagerAddress,
             arbWasmCacheAddress: config.arbWasmCacheAddress,
+            arbWasmAddress: config.arbWasmAddress,
           },
         },
         config: ignitionConfig,
@@ -48,6 +50,7 @@ async function main() {
     console.log(`   Contract Address: ${deployedAddress}`);
     console.log(`   Cache Manager: ${config.cacheManagerAddress}`);
     console.log(`   ARB WASM Cache: ${config.arbWasmCacheAddress}`);
+    console.log(`   ARB WASM: ${config.arbWasmAddress}`);
     console.log(`   Max Contracts Per User: ${config.maxContractsPerUser}`);
     console.log(`   Max User Funds: ${config.maxUserFunds}`);
     console.log(`   Verify Contracts: ${config.verify}`);
