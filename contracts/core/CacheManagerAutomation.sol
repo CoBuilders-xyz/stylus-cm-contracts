@@ -21,6 +21,11 @@ contract CacheManagerAutomation is
     using EnumerableSet for EnumerableSet.AddressSet;
     BiddingEscrow public escrow;
 
+    /// @dev bytes4(keccak256("ProgramExpired(uint64)")).
+    /// ArbWasm.programTimeLeft reverts with this custom error once a program
+    /// has expired in recent Nitro versions. Treated as "proceed to activate".
+    bytes4 private constant PROGRAM_EXPIRED_SELECTOR = 0xc9b12e52;
+
     // ------------------------------------------------------------------------
     // Configuration state variables (modifiable by owner)
     // ------------------------------------------------------------------------
@@ -74,7 +79,9 @@ contract CacheManagerAutomation is
         cacheThreshold = 98; // Start bidding when 98% full (10mb free for 512mb cache)
         horizonSeconds = 30 days; // Target 30 days to become competitive
         bidIncrement = 1; // Bid increment for uniqueness
-        maxActivationsPerIteration = 50;
+        // Activations are ~3.3M gas each; keep the default conservative so the
+        // batch fits in any block. Owner can raise it via setter.
+        maxActivationsPerIteration = 5;
     }
 
     // ------------------------------------------------------------------------
@@ -373,7 +380,7 @@ contract CacheManagerAutomation is
 
     function placeActivations(
         ActivationRequest[] calldata _activationRequests
-    ) external {
+    ) external nonReentrant {
         if (_activationRequests.length > maxActivationsPerIteration)
             revert TooManyActivations();
         for (uint256 i = 0; i < _activationRequests.length; i++) {
@@ -674,7 +681,6 @@ contract CacheManagerAutomation is
         //   - Old: programTimeLeft returns 0.
         //   - New: programTimeLeft reverts with ProgramExpired(uint64).
         // Anything else (still valid, never activated, other revert) is "skip".
-        // Selector check below = bytes4(keccak256("ProgramExpired(uint64)")).
         bool expired;
         try arbWasm.programTimeLeft(contractAddress) returns (uint64 timeLeft) {
             expired = (timeLeft == 0);
@@ -685,7 +691,7 @@ contract CacheManagerAutomation is
                     sel := mload(add(revertData, 32))
                 }
             }
-            if (sel != 0xc9b12e52)
+            if (sel != PROGRAM_EXPIRED_SELECTOR)
                 return
                     ActivationResult(
                         false,
@@ -744,7 +750,9 @@ contract CacheManagerAutomation is
         }
     }
 
-    /// @dev Split out from _activate to keep the stack shallow enough for solc.
+    /// @dev Performs the actual activateProgram call once the value has been
+    ///      withdrawn from the user's escrow. Uses a balance-delta measurement
+    ///      to support either precompile behavior (auto-refund or keep-all).
     function _doActivation(
         address user,
         address contractAddress,
@@ -762,13 +770,14 @@ contract CacheManagerAutomation is
             if (refund > 0) {
                 escrow.deposit{value: refund}(user);
             }
-            _emitActivationPerformed(
+            emit ActivationPerformed(
                 user,
                 contractAddress,
                 version,
                 dataFee,
                 spent,
-                refund
+                refund,
+                escrow.depositsOf(user)
             );
         } catch (bytes memory revertData) {
             // Activation reverted: the EVM returns the value to msg.sender
@@ -784,25 +793,5 @@ contract CacheManagerAutomation is
             );
             emit ActivationRevertData(user, contractAddress, revertData);
         }
-    }
-
-    /// @dev Wraps event emission to keep the stack of _doActivation shallow.
-    function _emitActivationPerformed(
-        address user,
-        address contractAddress,
-        uint16 version,
-        uint256 dataFee,
-        uint256 spent,
-        uint256 refund
-    ) internal {
-        emit ActivationPerformed(
-            user,
-            contractAddress,
-            version,
-            dataFee,
-            spent,
-            refund,
-            escrow.depositsOf(user)
-        );
     }
 }
