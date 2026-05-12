@@ -172,6 +172,39 @@ describe('CacheManagerAutomation — Activations', function () {
       await expect(tx).to.not.emit(cma, 'ActivationError');
     });
 
+    it('skips when programTimeLeft reverts with unknown selector', async function () {
+      await insertWithActivation();
+      // ProgramNotActivated() = bytes4(keccak256("ProgramNotActivated()")).
+      // Any selector other than ProgramExpired(uint64) must be treated as skip.
+      await arbWasm.setTimeLeftRevertWithSelector('0xdeadbeef');
+      await arbWasm.setDataFee(hre.ethers.parseEther('0.003'));
+      const tx = await cma.placeActivations([
+        {
+          user: user.address,
+          contractAddress: PROGRAM,
+          value: hre.ethers.parseEther('0.005'),
+        },
+      ]);
+      await expect(tx).to.not.emit(cma, 'ActivationPerformed');
+      await expect(tx).to.not.emit(cma, 'ActivationError');
+    });
+
+    it('proceeds when programTimeLeft reverts with ProgramExpired (new ArbWasm)', async function () {
+      await insertWithActivation();
+      // Simulate Nitro's new behavior: programTimeLeft reverts with
+      // ProgramExpired(uint64 ageInSeconds) once the program is expired.
+      await arbWasm.setTimeLeftRevertWithExpired(90000n);
+      await arbWasm.setVersion(7);
+      await arbWasm.setDataFee(hre.ethers.parseEther('0.003'));
+
+      const sentValue = hre.ethers.parseEther('0.005');
+      await expect(
+        cma.placeActivations([
+          { user: user.address, contractAddress: PROGRAM, value: sentValue },
+        ])
+      ).to.emit(cma, 'ActivationPerformed');
+    });
+
     it('skips when value > maxActivationCost', async function () {
       await insertWithActivation();
       await arbWasm.setDefaultTimeLeft(0);

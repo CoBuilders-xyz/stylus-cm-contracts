@@ -669,26 +669,38 @@ contract CacheManagerAutomation is
                     0
                 );
 
-        // Defensive: only activate when the program is actually expired.
-        // programTimeLeft returns 0 once the program has expired and reverts
-        // if the program was never activated. We treat any failure as "skip"
-        // so a single bad request doesn't poison the whole batch.
+        // Defensive: only activate expired programs. ArbWasm encodes "expired"
+        // two ways depending on Nitro version:
+        //   - Old: programTimeLeft returns 0.
+        //   - New: programTimeLeft reverts with ProgramExpired(uint64).
+        // Anything else (still valid, never activated, other revert) is "skip".
+        // Selector check below = bytes4(keccak256("ProgramExpired(uint64)")).
+        bool expired;
         try arbWasm.programTimeLeft(contractAddress) returns (uint64 timeLeft) {
-            if (timeLeft != 0)
+            expired = (timeLeft == 0);
+        } catch (bytes memory revertData) {
+            bytes4 sel;
+            if (revertData.length >= 4) {
+                assembly {
+                    sel := mload(add(revertData, 32))
+                }
+            }
+            if (sel != 0xc9b12e52)
                 return
                     ActivationResult(
                         false,
                         ContractConfig(address(0), 0, false, false, 0),
                         0
                     );
-        } catch {
+            expired = true;
+        }
+        if (!expired)
             return
                 ActivationResult(
                     false,
                     ContractConfig(address(0), 0, false, false, 0),
                     0
                 );
-        }
 
         // Locate user's contract config and validate it.
         ContractConfig[] storage contracts = userContracts[user];
@@ -758,9 +770,11 @@ contract CacheManagerAutomation is
                 spent,
                 refund
             );
-        } catch {
+        } catch (bytes memory revertData) {
             // Activation reverted: the EVM returns the value to msg.sender
-            // (this contract), so we can re-deposit the full amount.
+            // (this contract), so we can re-deposit the full amount. We also
+            // surface the raw revert payload so operators can decode the
+            // specific ArbWasm custom error.
             escrow.deposit{value: value}(user);
             emit ActivationError(
                 user,
@@ -768,6 +782,7 @@ contract CacheManagerAutomation is
                 value,
                 'Activation failed'
             );
+            emit ActivationRevertData(user, contractAddress, revertData);
         }
     }
 

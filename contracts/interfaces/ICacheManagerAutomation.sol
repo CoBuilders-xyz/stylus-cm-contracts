@@ -111,6 +111,14 @@ interface ICacheManagerAutomation {
         uint256 value,
         string reason
     );
+    /// @notice Emitted alongside ActivationError when the failure was the
+    /// ArbWasm precompile reverting, so off-chain consumers can decode the
+    /// actual custom error (e.g. ProgramExpired, ProgramUpToDate, etc.).
+    event ActivationRevertData(
+        address indexed user,
+        address indexed contractAddress,
+        bytes data
+    );
     event UserBalanceOperation(
         address indexed user,
         string operation,

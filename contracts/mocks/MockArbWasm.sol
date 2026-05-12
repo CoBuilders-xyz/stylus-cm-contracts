@@ -6,12 +6,18 @@ import {IArbWasm} from '../interfaces/IExternalContracts.sol';
 /// @notice Test double for the ArbWasm precompile. Exposes knobs to simulate
 ///         expiry, configurable dataFee, refund-or-keep, and revert paths.
 contract MockArbWasm is IArbWasm {
+    /// @dev Selector of `ProgramExpired(uint64)`.
+    bytes4 public constant PROGRAM_EXPIRED_SELECTOR = 0xc9b12e52;
+
     uint64 public defaultTimeLeft;
     uint16 public version;
     uint256 public dataFee;
     bool public refundExcess;
     bool public shouldRevert;
     bool public timeLeftReverts;
+    /// @dev When timeLeftReverts is true, revert with this custom error payload.
+    ///      Set via setTimeLeftRevertWithExpired / setTimeLeftRevertWithRaw.
+    bytes public timeLeftRevertData;
 
     mapping(address => uint64) public timeLeftOverrides;
     mapping(address => bool) public hasTimeLeftOverride;
@@ -45,12 +51,37 @@ contract MockArbWasm is IArbWasm {
 
     function setTimeLeftReverts(bool _r) external {
         timeLeftReverts = _r;
+        timeLeftRevertData = '';
+    }
+
+    /// @notice Configure programTimeLeft to revert with ProgramExpired(uint64).
+    function setTimeLeftRevertWithExpired(uint64 ageInSeconds) external {
+        timeLeftReverts = true;
+        timeLeftRevertData = abi.encodeWithSelector(
+            PROGRAM_EXPIRED_SELECTOR,
+            ageInSeconds
+        );
+    }
+
+    /// @notice Configure programTimeLeft to revert with an arbitrary selector
+    ///         (e.g. ProgramNotActivated()).
+    function setTimeLeftRevertWithSelector(bytes4 selector) external {
+        timeLeftReverts = true;
+        timeLeftRevertData = abi.encodePacked(selector);
     }
 
     function programTimeLeft(
         address program
     ) external view override returns (uint64) {
-        if (timeLeftReverts) revert('timeLeft revert');
+        if (timeLeftReverts) {
+            bytes memory data = timeLeftRevertData;
+            if (data.length > 0) {
+                assembly {
+                    revert(add(data, 32), mload(data))
+                }
+            }
+            revert('timeLeft revert');
+        }
         if (hasTimeLeftOverride[program]) return timeLeftOverrides[program];
         return defaultTimeLeft;
     }
