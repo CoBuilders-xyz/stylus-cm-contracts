@@ -24,12 +24,10 @@ interface ICacheManagerAutomation {
     struct ActivationRequest {
         address user;
         address contractAddress;
-        uint256 value;
     }
     struct ActivationResult {
         bool shouldActivate;
         ContractConfig contractConfig;
-        uint256 value;
     }
     struct UserContractsData {
         address user;

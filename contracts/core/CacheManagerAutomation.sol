@@ -19,7 +19,7 @@ contract CacheManagerAutomation is
     ReentrancyGuard
 {
     using EnumerableSet for EnumerableSet.AddressSet;
-    BiddingEscrow public escrow;
+    BiddingEscrow public immutable escrow;
 
     /// @dev bytes4(keccak256("ProgramExpired(uint64)")).
     /// ArbWasm.programTimeLeft reverts with this custom error once a program
@@ -44,9 +44,9 @@ contract CacheManagerAutomation is
     // State variables
     // ------------------------------------------------------------------------
 
-    ICacheManager public cacheManager;
-    IArbWasmCache public arbWasmCache;
-    IArbWasm public arbWasm;
+    ICacheManager public immutable cacheManager;
+    IArbWasmCache public immutable arbWasmCache;
+    IArbWasm public immutable arbWasm;
     mapping(address => ContractConfig[]) public userContracts;
     EnumerableSet.AddressSet private usersWithContracts;
 
@@ -289,6 +289,7 @@ contract CacheManagerAutomation is
                 return;
             }
         }
+        revert ContractNotFound();
     }
 
     function removeContract(address _contract) external {
@@ -388,10 +389,13 @@ contract CacheManagerAutomation is
                 _activationRequests[i]
             );
             if (!result.shouldActivate) continue;
+            // Caller has no agency over the value: the contract spends up to
+            // the user's per-contract cap. Mirrors how placeBids derives the
+            // bid amount internally (BidRequest carries no amount field).
             _activate(
                 _activationRequests[i].user,
                 result.contractConfig,
-                result.value
+                result.contractConfig.maxActivationCost
             );
         }
     }
@@ -657,24 +661,27 @@ contract CacheManagerAutomation is
         emit BalanceUpdated(user, escrow.depositsOf(user));
     }
 
-    /// @notice Internal function to validate an activation request before executing it
-    /// @dev Mirrors the defensive style of _shouldBid: off-chain operator decides what
-    ///      to send, on-chain re-checks every invariant.
+    /// @notice Internal function to validate an activation request before executing it.
+    /// @dev Mirrors the defensive style of _shouldBid: the caller only nominates
+    ///      a user/contract pair; the contract decides whether to activate and
+    ///      how much to spend (always exactly cfg.maxActivationCost, mirroring
+    ///      how _shouldBid derives the bid amount internally from cfg.maxBid).
     function _shouldActivate(
         ActivationRequest memory request
     ) internal view returns (ActivationResult memory) {
         address user = request.user;
         address contractAddress = request.contractAddress;
-        uint256 value = request.value;
+        ContractConfig memory empty = ContractConfig(
+            address(0),
+            0,
+            false,
+            false,
+            0
+        );
 
-        // Defensive: skip invalid addresses or zero value.
-        if (user == address(0) || contractAddress == address(0) || value == 0)
-            return
-                ActivationResult(
-                    false,
-                    ContractConfig(address(0), 0, false, false, 0),
-                    0
-                );
+        // Defensive: skip invalid addresses.
+        if (user == address(0) || contractAddress == address(0))
+            return ActivationResult(false, empty);
 
         // Defensive: only activate expired programs. ArbWasm encodes "expired"
         // two ways depending on Nitro version:
@@ -692,41 +699,25 @@ contract CacheManagerAutomation is
                 }
             }
             if (sel != PROGRAM_EXPIRED_SELECTOR)
-                return
-                    ActivationResult(
-                        false,
-                        ContractConfig(address(0), 0, false, false, 0),
-                        0
-                    );
+                return ActivationResult(false, empty);
             expired = true;
         }
-        if (!expired)
-            return
-                ActivationResult(
-                    false,
-                    ContractConfig(address(0), 0, false, false, 0),
-                    0
-                );
+        if (!expired) return ActivationResult(false, empty);
 
         // Locate user's contract config and validate it.
         ContractConfig[] storage contracts = userContracts[user];
         for (uint256 j = 0; j < contracts.length; j++) {
             if (contracts[j].contractAddress == contractAddress) {
                 ContractConfig memory cfg = contracts[j];
-                if (!cfg.autoActivate) return ActivationResult(false, cfg, 0);
-                if (value > cfg.maxActivationCost)
-                    return ActivationResult(false, cfg, 0);
-                if (value > escrow.depositsOf(user))
-                    return ActivationResult(false, cfg, 0);
-                return ActivationResult(true, cfg, value);
+                if (!cfg.autoActivate) return ActivationResult(false, cfg);
+                if (cfg.maxActivationCost == 0)
+                    return ActivationResult(false, cfg);
+                if (cfg.maxActivationCost > escrow.depositsOf(user))
+                    return ActivationResult(false, cfg);
+                return ActivationResult(true, cfg);
             }
         }
-        return
-            ActivationResult(
-                false,
-                ContractConfig(address(0), 0, false, false, 0),
-                0
-            );
+        return ActivationResult(false, empty);
     }
 
     /// @notice Internal function to execute the activation: pulls value from escrow,
