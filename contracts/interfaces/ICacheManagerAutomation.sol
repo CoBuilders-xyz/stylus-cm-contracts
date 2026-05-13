@@ -171,8 +171,6 @@ interface ICacheManagerAutomation {
     error InvalidFundAmount();
     error TooManyBids();
     error TooManyActivations();
-    error ProgramNotExpired();
-    error ExceedsMaxActivationCost();
     error InvalidActivationCost();
     error UnauthorizedSender();
 
