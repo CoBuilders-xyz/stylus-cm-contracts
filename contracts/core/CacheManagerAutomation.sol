@@ -221,6 +221,11 @@ contract CacheManagerAutomation is
         if (_maxBid < minMaxBidAmount) revert InvalidBid();
         if (_autoActivate && _maxActivationCost == 0)
             revert InvalidActivationCost();
+        // The per-contract cap can't exceed the per-user escrow ceiling, otherwise
+        // the runtime balance check in _shouldActivate would never let the
+        // activation proceed and the slot of state is dead.
+        if (_maxActivationCost > maxUserFunds)
+            revert InvalidActivationCost();
 
         ContractConfig[] storage contracts = userContracts[msg.sender];
         if (contracts.length >= maxContractsPerUser) revert TooManyContracts();
@@ -266,6 +271,8 @@ contract CacheManagerAutomation is
     ) external {
         if (_contract == address(0)) revert InvalidAddress();
         if (_autoActivate && _maxActivationCost == 0)
+            revert InvalidActivationCost();
+        if (_maxActivationCost > maxUserFunds)
             revert InvalidActivationCost();
 
         ContractConfig[] storage contracts = userContracts[msg.sender];
@@ -359,7 +366,20 @@ contract CacheManagerAutomation is
         return escrow.depositsOf(msg.sender);
     }
 
-    receive() external payable {}
+    /// @notice Only accept ETH from the three trusted protocol contracts the
+    /// activation/bidding flows rely on: the BiddingEscrow (forwards user
+    /// deposits to this contract via withdrawForBid), the ArbWasm precompile
+    /// (refunds excess msg.value after activateProgram), and the CacheManager
+    /// (if it ever refunds after a placeBid). Stranded donations from any
+    /// other source are rejected so they can't pollute the balance-delta
+    /// refund accounting in _doActivation.
+    receive() external payable {
+        if (
+            msg.sender != address(escrow) &&
+            msg.sender != address(arbWasm) &&
+            msg.sender != address(cacheManager)
+        ) revert UnauthorizedSender();
+    }
 
     // ------------------------------------------------------------------------
     // Contract external functions (operator)
@@ -683,14 +703,32 @@ contract CacheManagerAutomation is
         if (user == address(0) || contractAddress == address(0))
             return ActivationResult(false, empty);
 
-        // Defensive: only activate expired programs. ArbWasm encodes "expired"
-        // two ways depending on Nitro version:
+        // Cheap checks first so an attacker can't grief operators with batches
+        // of unregistered (user, contract) pairs that each cost a precompile
+        // read. Locate the user's contract config; bail before touching the
+        // precompile if registration/cap/balance invariants don't hold.
+        ContractConfig memory cfg;
+        bool found;
+        ContractConfig[] storage contracts = userContracts[user];
+        for (uint256 j = 0; j < contracts.length; j++) {
+            if (contracts[j].contractAddress == contractAddress) {
+                cfg = contracts[j];
+                found = true;
+                break;
+            }
+        }
+        if (!found) return ActivationResult(false, empty);
+        if (!cfg.autoActivate) return ActivationResult(false, cfg);
+        if (cfg.maxActivationCost > escrow.depositsOf(user))
+            return ActivationResult(false, cfg);
+
+        // Now check expiry. ArbWasm encodes "expired" two ways depending on
+        // Nitro version:
         //   - Old: programTimeLeft returns 0.
         //   - New: programTimeLeft reverts with ProgramExpired(uint64).
         // Anything else (still valid, never activated, other revert) is "skip".
-        bool expired;
         try arbWasm.programTimeLeft(contractAddress) returns (uint64 timeLeft) {
-            expired = (timeLeft == 0);
+            if (timeLeft != 0) return ActivationResult(false, cfg);
         } catch (bytes memory revertData) {
             bytes4 sel;
             if (revertData.length >= 4) {
@@ -699,25 +737,10 @@ contract CacheManagerAutomation is
                 }
             }
             if (sel != PROGRAM_EXPIRED_SELECTOR)
-                return ActivationResult(false, empty);
-            expired = true;
+                return ActivationResult(false, cfg);
         }
-        if (!expired) return ActivationResult(false, empty);
 
-        // Locate user's contract config and validate it.
-        ContractConfig[] storage contracts = userContracts[user];
-        for (uint256 j = 0; j < contracts.length; j++) {
-            if (contracts[j].contractAddress == contractAddress) {
-                ContractConfig memory cfg = contracts[j];
-                if (!cfg.autoActivate) return ActivationResult(false, cfg);
-                if (cfg.maxActivationCost == 0)
-                    return ActivationResult(false, cfg);
-                if (cfg.maxActivationCost > escrow.depositsOf(user))
-                    return ActivationResult(false, cfg);
-                return ActivationResult(true, cfg);
-            }
-        }
-        return ActivationResult(false, empty);
+        return ActivationResult(true, cfg);
     }
 
     /// @notice Internal function to execute the activation: pulls value from escrow,

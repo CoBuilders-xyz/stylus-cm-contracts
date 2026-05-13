@@ -174,6 +174,7 @@ interface ICacheManagerAutomation {
     error ProgramNotExpired();
     error ExceedsMaxActivationCost();
     error InvalidActivationCost();
+    error UnauthorizedSender();
 
     // Functions
     function insertContract(

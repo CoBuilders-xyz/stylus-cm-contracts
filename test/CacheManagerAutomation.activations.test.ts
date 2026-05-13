@@ -121,6 +121,36 @@ describe('CacheManagerAutomation — Activations', function () {
           .updateContract(PROGRAM, MAX_BID, true, false, 0)
       ).to.be.revertedWithCustomError(cma, 'ContractNotFound');
     });
+
+    it('insertContract reverts when maxActivationCost exceeds maxUserFunds', async function () {
+      const aboveCap = hre.ethers.parseEther('2'); // default maxUserFunds = 1 ether
+      await expect(
+        cma
+          .connect(user)
+          .insertContract(PROGRAM, MAX_BID, true, true, aboveCap, {
+            value: FUNDING,
+          })
+      ).to.be.revertedWithCustomError(cma, 'InvalidActivationCost');
+    });
+
+    it('updateContract reverts when maxActivationCost exceeds maxUserFunds', async function () {
+      await insertWithActivation();
+      const aboveCap = hre.ethers.parseEther('2');
+      await expect(
+        cma.connect(user).updateContract(PROGRAM, MAX_BID, true, true, aboveCap)
+      ).to.be.revertedWithCustomError(cma, 'InvalidActivationCost');
+    });
+  });
+
+  describe('receive()', function () {
+    it('rejects ETH from untrusted senders', async function () {
+      await expect(
+        user.sendTransaction({
+          to: await cma.getAddress(),
+          value: hre.ethers.parseEther('0.01'),
+        })
+      ).to.be.revertedWithCustomError(cma, 'UnauthorizedSender');
+    });
   });
 
   describe('placeActivations — guards', function () {
