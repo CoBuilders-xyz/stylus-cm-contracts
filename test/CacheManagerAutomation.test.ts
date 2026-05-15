@@ -34,14 +34,21 @@ describe('cacheManagerAutomation', async function () {
     maxBid = DEFAULT_MAX_BID,
     enabled = true,
     wallet?: Wallet | Signer,
-    funding?: bigint
+    funding?: bigint,
+    autoActivate = false,
+    maxActivationCost: bigint = 0n
   ) {
     const signer = wallet || user;
     return cmaDeployment.cacheManagerAutomation
       .connect(signer)
-      .insertContract(contractAddress, maxBid, enabled, {
-        value: funding || 0n,
-      });
+      .insertContract(
+        contractAddress,
+        maxBid,
+        enabled,
+        autoActivate,
+        maxActivationCost,
+        { value: funding || 0n }
+      );
   }
 
   // Helper function to decode and display transaction logs
@@ -565,7 +572,7 @@ describe('cacheManagerAutomation', async function () {
 
         await cmaDeployment.cacheManagerAutomation
           .connect(user)
-          .updateContract(contractToCacheAddress, updatedMaxBid, true);
+          .updateContract(contractToCacheAddress, updatedMaxBid, true, false, 0);
 
         // verify max bid was updated
         const userContracts = await cmaDeployment.cacheManagerAutomation
@@ -587,7 +594,13 @@ describe('cacheManagerAutomation', async function () {
 
         await cmaDeployment.cacheManagerAutomation
           .connect(user)
-          .updateContract(contractToCacheAddress, DEFAULT_MAX_BID, false);
+          .updateContract(
+            contractToCacheAddress,
+            DEFAULT_MAX_BID,
+            false,
+            false,
+            0
+          );
 
         // verify max bid was updated
         const userContracts = await cmaDeployment.cacheManagerAutomation
@@ -611,7 +624,7 @@ describe('cacheManagerAutomation', async function () {
 
         await cmaDeployment.cacheManagerAutomation
           .connect(user)
-          .updateContract(contractToCacheAddress, updatedMaxBid, false);
+          .updateContract(contractToCacheAddress, updatedMaxBid, false, false, 0);
 
         // verify max bid was updated
         const userContracts = await cmaDeployment.cacheManagerAutomation
@@ -634,7 +647,13 @@ describe('cacheManagerAutomation', async function () {
 
         await cmaDeployment.cacheManagerAutomation
           .connect(user)
-          .updateContract(contractToCacheAddress, DEFAULT_MAX_BID, false);
+          .updateContract(
+            contractToCacheAddress,
+            DEFAULT_MAX_BID,
+            false,
+            false,
+            0
+          );
 
         let userContracts = await cmaDeployment.cacheManagerAutomation
           .connect(user)
@@ -647,7 +666,7 @@ describe('cacheManagerAutomation', async function () {
 
         await cmaDeployment.cacheManagerAutomation
           .connect(user)
-          .updateContract(contractToCacheAddress, DEFAULT_MAX_BID, true);
+          .updateContract(contractToCacheAddress, DEFAULT_MAX_BID, true, false, 0);
 
         userContracts = await cmaDeployment.cacheManagerAutomation
           .connect(user)

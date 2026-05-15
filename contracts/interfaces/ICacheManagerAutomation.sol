@@ -9,6 +9,8 @@ interface ICacheManagerAutomation {
         address contractAddress;
         uint256 maxBid;
         bool enabled;
+        bool autoActivate;
+        uint256 maxActivationCost;
     }
     struct BidRequest {
         address user;
@@ -18,6 +20,14 @@ interface ICacheManagerAutomation {
         bool shouldBid;
         ContractConfig contractConfig;
         uint192 bidAmount;
+    }
+    struct ActivationRequest {
+        address user;
+        address contractAddress;
+    }
+    struct ActivationResult {
+        bool shouldActivate;
+        ContractConfig contractConfig;
     }
     struct UserContractsData {
         address user;
@@ -84,6 +94,29 @@ interface ICacheManagerAutomation {
         uint256 failedBids,
         uint256 timestamp
     );
+    event ActivationPerformed(
+        address indexed user,
+        address indexed contractAddress,
+        uint16 version,
+        uint256 dataFee,
+        uint256 spent,
+        uint256 refund,
+        uint256 userBalance
+    );
+    event ActivationError(
+        address indexed user,
+        address indexed contractAddress,
+        uint256 value,
+        string reason
+    );
+    /// @notice Emitted alongside ActivationError when the failure was the
+    /// ArbWasm precompile reverting, so off-chain consumers can decode the
+    /// actual custom error (e.g. ProgramExpired, ProgramUpToDate, etc.).
+    event ActivationRevertData(
+        address indexed user,
+        address indexed contractAddress,
+        bytes data
+    );
     event UserBalanceOperation(
         address indexed user,
         string operation,
@@ -102,6 +135,17 @@ interface ICacheManagerAutomation {
     event CacheThresholdUpdated(uint256 oldValue, uint256 newValue);
     event HorizonSecondsUpdated(uint256 oldValue, uint256 newValue);
     event BidIncrementUpdated(uint192 oldValue, uint192 newValue);
+    event MaxActivationsPerIterationUpdated(uint256 oldValue, uint256 newValue);
+    event ContractAutoActivateUpdated(
+        address indexed user,
+        address indexed contractAddress,
+        bool autoActivate
+    );
+    event ContractMaxActivationCostUpdated(
+        address indexed user,
+        address indexed contractAddress,
+        uint256 maxActivationCost
+    );
 
     // Debug events
     event DebugBidCheck(
@@ -126,17 +170,24 @@ interface ICacheManagerAutomation {
     error ExceedsMaxUserFunds();
     error InvalidFundAmount();
     error TooManyBids();
+    error TooManyActivations();
+    error InvalidActivationCost();
+    error UnauthorizedSender();
 
     // Functions
     function insertContract(
         address _contract,
         uint256 _maxBid,
-        bool _enabled
+        bool _enabled,
+        bool _autoActivate,
+        uint256 _maxActivationCost
     ) external payable;
     function updateContract(
         address _contract,
         uint256 _maxBid,
-        bool _enabled
+        bool _enabled,
+        bool _autoActivate,
+        uint256 _maxActivationCost
     ) external;
     function removeContract(address _contract) external;
     function removeAllContracts() external;
@@ -145,6 +196,9 @@ interface ICacheManagerAutomation {
     function withdrawBalance() external;
     function getUserBalance() external view returns (uint256);
     function placeBids(BidRequest[] calldata _bidRequests) external;
+    function placeActivations(
+        ActivationRequest[] calldata _activationRequests
+    ) external;
     function getContracts() external view returns (UserContractsData[] memory);
     function getContractsPaginated(
         uint256 offset,
@@ -163,4 +217,7 @@ interface ICacheManagerAutomation {
     function setCacheThreshold(uint256 _cacheThreshold) external;
     function setHorizonSeconds(uint256 _horizonSeconds) external;
     function setBidIncrement(uint192 _bidIncrement) external;
+    function setMaxActivationsPerIteration(
+        uint256 _maxActivationsPerIteration
+    ) external;
 }

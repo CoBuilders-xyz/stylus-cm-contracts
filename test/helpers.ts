@@ -16,6 +16,7 @@ export interface CMADeployment {
   cacheManager: Contract;
   cacheManagerAddress: string;
   arbWasmCacheAddress: string;
+  arbWasmAddress: string;
   owner: Signer;
   provider: Provider;
 }
@@ -34,6 +35,10 @@ export async function deployCMA(): Promise<CMADeployment> {
   const arbWasmCacheAddress = hre.ethers.getAddress(
     process.env.ARB_WASM_CACHE_ADDRESS || '0x'
   );
+  const arbWasmAddress = hre.ethers.getAddress(
+    process.env.ARB_WASM_ADDRESS ||
+      '0x0000000000000000000000000000000000000071'
+  );
 
   const l2Owner = await hre.ethers.getSigner(
     process.env.ARBLOC_OWNER_ADD || '0x'
@@ -45,7 +50,8 @@ export async function deployCMA(): Promise<CMADeployment> {
 
   const cacheManagerAutomation = await CacheManagerAutomationFactory.deploy(
     cacheManagerAddress,
-    arbWasmCacheAddress
+    arbWasmCacheAddress,
+    arbWasmAddress
   );
 
   await cacheManagerAutomation.waitForDeployment();
@@ -61,6 +67,7 @@ export async function deployCMA(): Promise<CMADeployment> {
     cacheManager,
     cacheManagerAddress,
     arbWasmCacheAddress,
+    arbWasmAddress,
     owner,
     provider: owner.provider,
   };
