@@ -7,11 +7,11 @@ export const networks: NetworksUserConfig = {
     // Local hardhat network
   },
   localL1: {
-    url: 'http://localhost:8545',
+    url: process.env.ARB_LOCAL_L1_RPC || 'http://localhost:8545',
     accounts: [process.env.ARB_LOCAL_FUNDED_PK || ''],
   },
   localArb: {
-    url: 'http://localhost:8547',
+    url: process.env.ARB_LOCAL_RPC || 'http://localhost:8547',
     accounts: [process.env.ARB_LOCAL_FUNDED_PK || ''],
   },
   arbitrumSepolia: {
