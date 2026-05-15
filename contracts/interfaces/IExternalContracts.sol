@@ -14,3 +14,16 @@ interface ICacheManager {
 interface IArbWasmCache {
     function codehashIsCached(bytes32 codehash) external view returns (bool);
 }
+
+/// @notice Interface for the Arbitrum WASM precompile (0x...0071)
+interface IArbWasm {
+    /// @notice Activates a Stylus program. Reverts if msg.value < dataFee.
+    function activateProgram(
+        address program
+    ) external payable returns (uint16 version, uint256 dataFee);
+
+    /// @notice Seconds remaining until the program expires (0 means expired).
+    function programTimeLeft(
+        address program
+    ) external view returns (uint64);
+}

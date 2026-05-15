@@ -19,7 +19,12 @@ contract CacheManagerAutomation is
     ReentrancyGuard
 {
     using EnumerableSet for EnumerableSet.AddressSet;
-    BiddingEscrow public escrow;
+    BiddingEscrow public immutable escrow;
+
+    /// @dev bytes4(keccak256("ProgramExpired(uint64)")).
+    /// ArbWasm.programTimeLeft reverts with this custom error once a program
+    /// has expired in recent Nitro versions. Treated as "proceed to activate".
+    bytes4 private constant PROGRAM_EXPIRED_SELECTOR = 0xc9b12e52;
 
     // ------------------------------------------------------------------------
     // Configuration state variables (modifiable by owner)
@@ -33,13 +38,15 @@ contract CacheManagerAutomation is
     uint256 public cacheThreshold;
     uint256 public horizonSeconds;
     uint192 public bidIncrement;
+    uint256 public maxActivationsPerIteration;
 
     // ------------------------------------------------------------------------
     // State variables
     // ------------------------------------------------------------------------
 
-    ICacheManager public cacheManager;
-    IArbWasmCache public arbWasmCache;
+    ICacheManager public immutable cacheManager;
+    IArbWasmCache public immutable arbWasmCache;
+    IArbWasm public immutable arbWasm;
     mapping(address => ContractConfig[]) public userContracts;
     EnumerableSet.AddressSet private usersWithContracts;
 
@@ -48,12 +55,18 @@ contract CacheManagerAutomation is
     // ------------------------------------------------------------------------
 
     /// @notice Initializes the contract
-    constructor(address _cacheManager, address _arbWasmCache) {
+    constructor(
+        address _cacheManager,
+        address _arbWasmCache,
+        address _arbWasm
+    ) {
         if (_cacheManager == address(0)) revert InvalidAddress();
         if (_arbWasmCache == address(0)) revert InvalidAddress();
+        if (_arbWasm == address(0)) revert InvalidAddress();
 
         cacheManager = ICacheManager(_cacheManager);
         arbWasmCache = IArbWasmCache(_arbWasmCache);
+        arbWasm = IArbWasm(_arbWasm);
         escrow = new BiddingEscrow();
 
         // Initialize configuration parameters with default values
@@ -66,6 +79,9 @@ contract CacheManagerAutomation is
         cacheThreshold = 98; // Start bidding when 98% full (10mb free for 512mb cache)
         horizonSeconds = 30 days; // Target 30 days to become competitive
         bidIncrement = 1; // Bid increment for uniqueness
+        // Activations are ~3.3M gas each; keep the default conservative so the
+        // batch fits in any block. Owner can raise it via setter.
+        maxActivationsPerIteration = 5;
     }
 
     // ------------------------------------------------------------------------
@@ -173,6 +189,23 @@ contract CacheManagerAutomation is
         emit BidIncrementUpdated(oldValue, _bidIncrement);
     }
 
+    /// @notice Set maximum activations per iteration
+    /// @param _maxActivationsPerIteration New maximum activations per iteration
+    function setMaxActivationsPerIteration(
+        uint256 _maxActivationsPerIteration
+    ) external onlyOwner {
+        require(
+            _maxActivationsPerIteration > 0,
+            'Max activations per iteration must be greater than 0'
+        );
+        uint256 oldValue = maxActivationsPerIteration;
+        maxActivationsPerIteration = _maxActivationsPerIteration;
+        emit MaxActivationsPerIterationUpdated(
+            oldValue,
+            _maxActivationsPerIteration
+        );
+    }
+
     // ------------------------------------------------------------------------
     // Contract externalfunctions (user)
     // ------------------------------------------------------------------------
@@ -180,10 +213,19 @@ contract CacheManagerAutomation is
     function insertContract(
         address _contract,
         uint256 _maxBid,
-        bool _enabled
+        bool _enabled,
+        bool _autoActivate,
+        uint256 _maxActivationCost
     ) external payable {
         if (_contract == address(0)) revert InvalidAddress(); // TODO allow on only stylus contracts
         if (_maxBid < minMaxBidAmount) revert InvalidBid();
+        if (_autoActivate && _maxActivationCost == 0)
+            revert InvalidActivationCost();
+        // The per-contract cap can't exceed the per-user escrow ceiling, otherwise
+        // the runtime balance check in _shouldActivate would never let the
+        // activation proceed and the slot of state is dead.
+        if (_maxActivationCost > maxUserFunds)
+            revert InvalidActivationCost();
 
         ContractConfig[] storage contracts = userContracts[msg.sender];
         if (contracts.length >= maxContractsPerUser) revert TooManyContracts();
@@ -205,30 +247,56 @@ contract CacheManagerAutomation is
             ContractConfig({
                 contractAddress: _contract,
                 maxBid: _maxBid,
-                enabled: _enabled
+                enabled: _enabled,
+                autoActivate: _autoActivate,
+                maxActivationCost: _maxActivationCost
             })
         );
         _updateUserBalance(msg.sender, msg.value);
         emit ContractAdded(msg.sender, _contract, _maxBid);
+        emit ContractAutoActivateUpdated(msg.sender, _contract, _autoActivate);
+        emit ContractMaxActivationCostUpdated(
+            msg.sender,
+            _contract,
+            _maxActivationCost
+        );
     }
 
     function updateContract(
         address _contract,
         uint256 _maxBid,
-        bool _enabled
+        bool _enabled,
+        bool _autoActivate,
+        uint256 _maxActivationCost
     ) external {
         if (_contract == address(0)) revert InvalidAddress();
-        if (_maxBid < 0) revert InvalidBid();
+        if (_autoActivate && _maxActivationCost == 0)
+            revert InvalidActivationCost();
+        if (_maxActivationCost > maxUserFunds)
+            revert InvalidActivationCost();
 
         ContractConfig[] storage contracts = userContracts[msg.sender];
         for (uint256 i = 0; i < contracts.length; i++) {
             if (contracts[i].contractAddress == _contract) {
                 contracts[i].maxBid = _maxBid;
                 contracts[i].enabled = _enabled;
+                contracts[i].autoActivate = _autoActivate;
+                contracts[i].maxActivationCost = _maxActivationCost;
                 emit ContractUpdated(msg.sender, _contract, _maxBid);
+                emit ContractAutoActivateUpdated(
+                    msg.sender,
+                    _contract,
+                    _autoActivate
+                );
+                emit ContractMaxActivationCostUpdated(
+                    msg.sender,
+                    _contract,
+                    _maxActivationCost
+                );
                 return;
             }
         }
+        revert ContractNotFound();
     }
 
     function removeContract(address _contract) external {
@@ -298,7 +366,20 @@ contract CacheManagerAutomation is
         return escrow.depositsOf(msg.sender);
     }
 
-    receive() external payable {}
+    /// @notice Only accept ETH from the three trusted protocol contracts the
+    /// activation/bidding flows rely on: the BiddingEscrow (forwards user
+    /// deposits to this contract via withdrawForBid), the ArbWasm precompile
+    /// (refunds excess msg.value after activateProgram), and the CacheManager
+    /// (if it ever refunds after a placeBid). Stranded donations from any
+    /// other source are rejected so they can't pollute the balance-delta
+    /// refund accounting in _doActivation.
+    receive() external payable {
+        if (
+            msg.sender != address(escrow) &&
+            msg.sender != address(arbWasm) &&
+            msg.sender != address(cacheManager)
+        ) revert UnauthorizedSender();
+    }
 
     // ------------------------------------------------------------------------
     // Contract external functions (operator)
@@ -314,6 +395,27 @@ contract CacheManagerAutomation is
                 _bidRequests[i].user,
                 result.contractConfig,
                 result.bidAmount
+            );
+        }
+    }
+
+    function placeActivations(
+        ActivationRequest[] calldata _activationRequests
+    ) external nonReentrant {
+        if (_activationRequests.length > maxActivationsPerIteration)
+            revert TooManyActivations();
+        for (uint256 i = 0; i < _activationRequests.length; i++) {
+            ActivationResult memory result = _shouldActivate(
+                _activationRequests[i]
+            );
+            if (!result.shouldActivate) continue;
+            // Caller has no agency over the value: the contract spends up to
+            // the user's per-contract cap. Mirrors how placeBids derives the
+            // bid amount internally (BidRequest carries no amount field).
+            _activate(
+                _activationRequests[i].user,
+                result.contractConfig,
+                result.contractConfig.maxActivationCost
             );
         }
     }
@@ -476,13 +578,13 @@ contract CacheManagerAutomation is
 
         // Are addresses valid?
         if (user == address(0) || contractAddress == address(0))
-            return BidResult(false, ContractConfig(address(0), 0, false), 0);
+            return BidResult(false, ContractConfig(address(0), 0, false, false, 0), 0);
 
         // Address is valid
 
         // Is contract already cached?
         if (arbWasmCache.codehashIsCached(contractAddress.codehash))
-            return BidResult(false, ContractConfig(address(0), 0, false), 0);
+            return BidResult(false, ContractConfig(address(0), 0, false, false, 0), 0);
 
         // Address is valid & contract is not cached
 
@@ -516,7 +618,7 @@ contract CacheManagerAutomation is
                 return BidResult(true, contracts[j], calculatedBid);
             }
         }
-        return BidResult(false, ContractConfig(address(0), 0, false), 0); // Contract not found
+        return BidResult(false, ContractConfig(address(0), 0, false, false, 0), 0); // Contract not found
     }
 
     function _placeBid(
@@ -577,5 +679,133 @@ contract CacheManagerAutomation is
     function _updateUserBalance(address user, uint256 amount) internal {
         escrow.deposit{value: amount}(user);
         emit BalanceUpdated(user, escrow.depositsOf(user));
+    }
+
+    /// @notice Internal function to validate an activation request before executing it.
+    /// @dev Mirrors the defensive style of _shouldBid: the caller only nominates
+    ///      a user/contract pair; the contract decides whether to activate and
+    ///      how much to spend (always exactly cfg.maxActivationCost, mirroring
+    ///      how _shouldBid derives the bid amount internally from cfg.maxBid).
+    function _shouldActivate(
+        ActivationRequest memory request
+    ) internal view returns (ActivationResult memory) {
+        address user = request.user;
+        address contractAddress = request.contractAddress;
+        ContractConfig memory empty = ContractConfig(
+            address(0),
+            0,
+            false,
+            false,
+            0
+        );
+
+        // Defensive: skip invalid addresses.
+        if (user == address(0) || contractAddress == address(0))
+            return ActivationResult(false, empty);
+
+        // Cheap checks first so an attacker can't grief operators with batches
+        // of unregistered (user, contract) pairs that each cost a precompile
+        // read. Locate the user's contract config; bail before touching the
+        // precompile if registration/cap/balance invariants don't hold.
+        ContractConfig memory cfg;
+        bool found;
+        ContractConfig[] storage contracts = userContracts[user];
+        for (uint256 j = 0; j < contracts.length; j++) {
+            if (contracts[j].contractAddress == contractAddress) {
+                cfg = contracts[j];
+                found = true;
+                break;
+            }
+        }
+        if (!found) return ActivationResult(false, empty);
+        if (!cfg.autoActivate) return ActivationResult(false, cfg);
+        if (cfg.maxActivationCost > escrow.depositsOf(user))
+            return ActivationResult(false, cfg);
+
+        // Now check expiry. ArbWasm encodes "expired" two ways depending on
+        // Nitro version:
+        //   - Old: programTimeLeft returns 0.
+        //   - New: programTimeLeft reverts with ProgramExpired(uint64).
+        // Anything else (still valid, never activated, other revert) is "skip".
+        try arbWasm.programTimeLeft(contractAddress) returns (uint64 timeLeft) {
+            if (timeLeft != 0) return ActivationResult(false, cfg);
+        } catch (bytes memory revertData) {
+            bytes4 sel;
+            if (revertData.length >= 4) {
+                assembly {
+                    sel := mload(add(revertData, 32))
+                }
+            }
+            if (sel != PROGRAM_EXPIRED_SELECTOR)
+                return ActivationResult(false, cfg);
+        }
+
+        return ActivationResult(true, cfg);
+    }
+
+    /// @notice Internal function to execute the activation: pulls value from escrow,
+    ///         calls activateProgram, and refunds whatever wasn't actually consumed
+    ///         based on a balance-delta measurement.
+    function _activate(
+        address user,
+        ContractConfig memory cfg,
+        uint256 value
+    ) internal {
+        // Pull value from user's escrow into this contract.
+        try escrow.withdrawForBid(payable(user), value) {
+            _doActivation(user, cfg.contractAddress, value);
+        } catch {
+            emit ActivationError(
+                user,
+                cfg.contractAddress,
+                value,
+                'Insufficient balance'
+            );
+        }
+    }
+
+    /// @dev Performs the actual activateProgram call once the value has been
+    ///      withdrawn from the user's escrow. Uses a balance-delta measurement
+    ///      to support either precompile behavior (auto-refund or keep-all).
+    function _doActivation(
+        address user,
+        address contractAddress,
+        uint256 value
+    ) internal {
+        uint256 balanceBefore = address(this).balance;
+        try arbWasm.activateProgram{value: value}(contractAddress) returns (
+            uint16 version,
+            uint256 dataFee
+        ) {
+            uint256 spent = balanceBefore > address(this).balance
+                ? balanceBefore - address(this).balance
+                : 0;
+            uint256 refund = value > spent ? value - spent : 0;
+            if (refund > 0) {
+                escrow.deposit{value: refund}(user);
+            }
+            emit ActivationPerformed(
+                user,
+                contractAddress,
+                version,
+                dataFee,
+                spent,
+                refund,
+                escrow.depositsOf(user)
+            );
+        } catch (bytes memory revertData) {
+            // Activation reverted: the EVM returns the value to msg.sender
+            // (this contract), so we can re-deposit the full amount. We also
+            // surface the raw revert payload so operators can decode the
+            // specific ArbWasm custom error.
+            escrow.deposit{value: value}(user);
+            emit ActivationError(
+                user,
+                contractAddress,
+                value,
+                'Activation failed'
+            );
+            emit ActivationRevertData(user, contractAddress, revertData);
+        }
     }
 }
