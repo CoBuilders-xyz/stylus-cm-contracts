@@ -45,6 +45,8 @@ fi
 # Source the environment file
 source "$ENV_FILE"
 
+REPO_ROOT="$(pwd)"
+
 # Move to contract folder
 cd test/utils/mock-wasm-contracts/mock-contract
 
@@ -69,7 +71,10 @@ for ((i=1; i<=ITERATIONS; i++)); do
     perl -i -pe "s/pub fn ${DUMMY_OLD}\\(/pub fn ${DUMMY_NEW}\\(/g" "$RUST_FILE"
 
     # Compile and deploy the contract
-    CONTRACT_ADDRESS=$(cargo stylus deploy --private-key $ARBPRE_PK --no-verify --endpoint=$RPC 2>/dev/null | grep "deployed code at address" | awk '{print $5}')
+    DEPLOY_OUTPUT=$(cargo stylus deploy --private-key "$ARBPRE_PK" --no-verify --no-activate --endpoint="$RPC" 2>&1)
+    echo "$DEPLOY_OUTPUT"
+    CLEAN_DEPLOY_OUTPUT=$(echo "$DEPLOY_OUTPUT" | sed 's/\x1b\[[0-9;]*m//g')
+    CONTRACT_ADDRESS=$(echo "$CLEAN_DEPLOY_OUTPUT" | sed -nE 's/.*(Deploying program to address|deployed code at address):? (0x[0-9a-fA-F]{40}).*/\2/p' | tail -n 1)
 
     echo "$CONTRACT_ADDRESS"
     CONTRACT_ADDRESSES+=("$CONTRACT_ADDRESS")
@@ -81,10 +86,10 @@ done
 cp $CLEAN_RUST_FILE $RUST_FILE
 
 # Return to the root directory
-cd ../../../
+cd "$REPO_ROOT"
 
 # Create addresses.txt directory if it doesn't exist
-ADDRESSES_OUTPUT_FILE="addresses.txt"
+ADDRESSES_OUTPUT_FILE="test/tmp/addresses.txt"
 mkdir -p "$(dirname "$ADDRESSES_OUTPUT_FILE")"
 
 # Append addresses to the addresses.txt file
