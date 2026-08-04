@@ -867,6 +867,106 @@ describe('cacheManagerAutomation', async function () {
         expect(eventNames).to.include('BidPlaced');
       });
 
+      it('Should skip a non-Stylus entry when getMinBid reverts and continue the batch', async function () {
+        this.timeout(0);
+
+        const configuredProgram = process.env.ISSUE_2_VALID_PROGRAM;
+        const validProgramAddress = configuredProgram
+          ? hre.ethers.getAddress(configuredProgram)
+          : hre.ethers.getAddress((await deployDummyWASMContracts(1))[0]);
+        const invalidProgramAddress = hre.ethers.getAddress(
+          process.env.CACHE_MANAGER_ADDRESS!
+        );
+        const maxBid = hre.ethers.parseEther('0.001');
+        const funding = hre.ethers.parseEther('0.01');
+
+        if (!configuredProgram) {
+          const arbWasm = new hre.ethers.Contract(
+            process.env.ARB_WASM_ADDRESS ||
+              '0x0000000000000000000000000000000000000071',
+            [
+              'function activateProgram(address program) payable returns (uint16 version, uint256 dataFee)',
+            ],
+            owner
+          );
+          await (
+            await arbWasm.activateProgram(validProgramAddress, {
+              value: hre.ethers.parseEther('0.01'),
+              gasLimit: 20_000_000,
+            })
+          ).wait();
+        }
+
+        const walletFunding = hre.ethers.parseEther('0.02');
+        const poisonedUser = await createAndFundWallet(walletFunding);
+        const validUser = await createAndFundWallet(walletFunding);
+        await insertContract(
+          invalidProgramAddress,
+          maxBid,
+          true,
+          poisonedUser,
+          funding
+        );
+        await insertContract(
+          validProgramAddress,
+          maxBid,
+          true,
+          validUser,
+          funding
+        );
+
+        const cacheManagerWithErrors = new hre.ethers.Contract(
+          invalidProgramAddress,
+          [
+            'function getMinBid(address program) external view returns (uint192)',
+            'error ProgramNotActivated()',
+          ],
+          owner
+        );
+        await expect(
+          cacheManagerWithErrors.getMinBid(invalidProgramAddress)
+        ).to.be.revertedWithCustomError(
+          cacheManagerWithErrors,
+          'ProgramNotActivated'
+        );
+
+        const poisonedBalanceBefore = await cmaDeployment.cacheManagerAutomation
+          .connect(poisonedUser)
+          .getUserBalance();
+        const validBalanceBefore = await cmaDeployment.cacheManagerAutomation
+          .connect(validUser)
+          .getUserBalance();
+        const tx = await cmaDeployment.cacheManagerAutomation.placeBids([
+          {
+            contractAddress: invalidProgramAddress,
+            user: poisonedUser.address,
+          },
+          {
+            contractAddress: validProgramAddress,
+            user: validUser.address,
+          },
+        ]);
+        const events = logTransactionEvents(await tx.wait(), false);
+        const bidPlacedEvents = events.filter(
+          (event) => event.eventName === 'BidPlaced'
+        );
+
+        expect(bidPlacedEvents).to.have.length(1);
+        expect(bidPlacedEvents[0].args[0]).to.equal(validUser.address);
+        expect(bidPlacedEvents[0].args[1]).to.equal(validProgramAddress);
+        const validBidAmount = bidPlacedEvents[0].args[2];
+        expect(
+          await cmaDeployment.cacheManagerAutomation
+            .connect(poisonedUser)
+            .getUserBalance()
+        ).to.equal(poisonedBalanceBefore);
+        expect(
+          await cmaDeployment.cacheManagerAutomation
+            .connect(validUser)
+            .getUserBalance()
+        ).to.equal(validBalanceBefore - validBidAmount);
+      });
+
       it('Should deduct balance when bid is placed and minBid != 0', async function () {
         const [contract, auxContract, auxContract2] =
           await deployDummyWASMContracts(3);

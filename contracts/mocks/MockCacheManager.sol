@@ -4,10 +4,13 @@ pragma solidity 0.8.30;
 import {ICacheManager} from '../interfaces/IExternalContracts.sol';
 
 contract MockCacheManager is ICacheManager {
+    error MinBidUnavailable(address program);
+
     uint192 public minBid;
     uint64 public _cacheSize;
     uint64 public _queueSize;
     uint64 public _decay;
+    mapping(address => bool) public minBidReverts;
 
     function setMinBid(uint192 _b) external {
         minBid = _b;
@@ -19,7 +22,12 @@ contract MockCacheManager is ICacheManager {
         _decay = d;
     }
 
-    function getMinBid(address) external view override returns (uint192) {
+    function setMinBidReverts(address program, bool shouldRevert) external {
+        minBidReverts[program] = shouldRevert;
+    }
+
+    function getMinBid(address program) external view override returns (uint192) {
+        if (minBidReverts[program]) revert MinBidUnavailable(program);
         return minBid;
     }
 

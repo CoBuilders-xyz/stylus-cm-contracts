@@ -597,7 +597,14 @@ contract CacheManagerAutomation is
                     return BidResult(false, contracts[j], 0);
 
                 // Calculate bid amount
-                uint192 minBid = cacheManager.getMinBid(contractAddress);
+                uint192 minBid;
+                try cacheManager.getMinBid(contractAddress) returns (
+                    uint192 value
+                ) {
+                    minBid = value;
+                } catch {
+                    return BidResult(false, contracts[j], 0);
+                }
                 uint192 calculatedBid = _calculateBidAmount(
                     contracts[j].maxBid,
                     bidIndex,
