@@ -384,7 +384,17 @@ contract CacheManagerAutomation is
 
     function placeBids(BidRequest[] calldata _bidRequests) external {
         if (_bidRequests.length > maxBidsPerIteration) revert TooManyBids();
+        if (_bidRequests.length == 0) return;
+
+        // Allocate at least two slots per request to reduce the expected number
+        // of linear probes. Deliberately colliding keys can still cost O(n^2).
+        uint256 tableSize = 1;
+        while (tableSize < _bidRequests.length * 2) tableSize <<= 1;
+        bytes32[] memory seenRequests = new bytes32[](tableSize);
+
         for (uint256 i = 0; i < _bidRequests.length; i++) {
+            if (_isDuplicateBidRequest(seenRequests, _bidRequests[i]))
+                continue;
             BidResult memory result = _shouldBid(_bidRequests[i], i);
             if (!result.shouldBid) continue;
             _placeBid(
@@ -393,6 +403,29 @@ contract CacheManagerAutomation is
                 result.bidAmount
             );
         }
+    }
+
+    /// @dev Inserts a user-contract pair into an in-memory hash set and returns
+    ///      true when the pair was already present. The first occurrence wins
+    ///      even if it is later skipped by _shouldBid. The table is power-of-two
+    ///      sized, so wrapping linear probes only requires a bit mask.
+    function _isDuplicateBidRequest(
+        bytes32[] memory seenRequests,
+        BidRequest calldata bidRequest
+    ) internal pure returns (bool) {
+        bytes32 key = keccak256(
+            abi.encode(bidRequest.user, bidRequest.contractAddress)
+        );
+        uint256 mask = seenRequests.length - 1;
+        uint256 index = uint256(key) & mask;
+
+        while (seenRequests[index] != bytes32(0)) {
+            if (seenRequests[index] == key) return true;
+            index = (index + 1) & mask;
+        }
+
+        seenRequests[index] = key;
+        return false;
     }
 
     function placeActivations(
