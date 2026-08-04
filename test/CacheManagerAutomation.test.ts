@@ -427,6 +427,51 @@ describe('cacheManagerAutomation', async function () {
           initialUserBalance + hre.ethers.parseEther('0.001')
         );
       });
+
+      it('Should enforce minFundAmount when insertContract receives ETH', async function () {
+        const isolatedDeployment = await deployCMA();
+        const minFundAmount = 100n;
+        const contractAddress = hre.ethers.getAddress(
+          process.env.CACHE_MANAGER_ADDRESS!
+        );
+        await isolatedDeployment.cacheManagerAutomation.setMinFundAmount(
+          minFundAmount
+        );
+
+        const balanceBefore = await isolatedDeployment.cacheManagerAutomation
+          .connect(user)
+          .getUserBalance();
+        const contractsBefore = await isolatedDeployment.cacheManagerAutomation
+          .connect(user)
+          .getUserContracts();
+
+        await expect(
+          isolatedDeployment.cacheManagerAutomation
+            .connect(user)
+            .insertContract(
+              contractAddress,
+              DEFAULT_MAX_BID,
+              true,
+              false,
+              0,
+              { value: minFundAmount - 1n }
+            )
+        ).to.be.revertedWithCustomError(
+          isolatedDeployment.cacheManagerAutomation,
+          'InvalidFundAmount'
+        );
+
+        expect(
+          await isolatedDeployment.cacheManagerAutomation
+            .connect(user)
+            .getUserBalance()
+        ).to.equal(balanceBefore);
+        expect(
+          await isolatedDeployment.cacheManagerAutomation
+            .connect(user)
+            .getUserContracts()
+        ).to.have.length(contractsBefore.length);
+      });
     });
     describe('Contract Removal', function () {
       it('Should remove a contract from CMA', async function () {

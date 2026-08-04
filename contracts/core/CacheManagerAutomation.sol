@@ -226,7 +226,6 @@ contract CacheManagerAutomation is
         // activation proceed and the slot of state is dead.
         if (_maxActivationCost > maxUserFunds)
             revert InvalidActivationCost();
-
         ContractConfig[] storage contracts = userContracts[msg.sender];
         if (contracts.length >= maxContractsPerUser) revert TooManyContracts();
 
@@ -237,6 +236,8 @@ contract CacheManagerAutomation is
                 revert ContractAlreadyExists();
             }
         }
+
+        if (msg.value > 0) _validateFundAmount(msg.sender, msg.value);
 
         // Add user to set if this is their first contract
         if (contracts.length == 0) {
@@ -344,12 +345,7 @@ contract CacheManagerAutomation is
     }
 
     function fundBalance() external payable {
-        if (msg.value < minFundAmount) revert InvalidFundAmount();
-
-        uint256 currentBalance = escrow.depositsOf(msg.sender);
-        if (currentBalance + msg.value > maxUserFunds)
-            revert ExceedsMaxUserFunds();
-
+        _validateFundAmount(msg.sender, msg.value);
         _updateUserBalance(msg.sender, msg.value);
     }
 
@@ -680,6 +676,14 @@ contract CacheManagerAutomation is
                 );
             }
         }
+    }
+
+    function _validateFundAmount(address user, uint256 amount) internal view {
+        if (amount < minFundAmount) revert InvalidFundAmount();
+
+        uint256 currentBalance = escrow.depositsOf(user);
+        if (currentBalance + amount > maxUserFunds)
+            revert ExceedsMaxUserFunds();
     }
 
     /// @notice Updates user balance and emits event

@@ -74,6 +74,75 @@ describe('CacheManagerAutomation — Activations', function () {
   }
 
   describe('insertContract / updateContract', function () {
+    it('allows inserting a contract without funding', async function () {
+      await cma
+        .connect(user)
+        .insertContract(PROGRAM, MAX_BID, true, false, 0, { value: 0 });
+
+      expect(await cma.connect(user).getUserBalance()).to.equal(0);
+      expect(await cma.connect(user).getUserContracts()).to.have.length(1);
+    });
+
+    it('rejects insertContract funding below minFundAmount without changing state', async function () {
+      const minFundAmount = 100n;
+      await cma.setMinFundAmount(minFundAmount);
+
+      await expect(
+        cma
+          .connect(user)
+          .insertContract(PROGRAM, MAX_BID, true, false, 0, {
+            value: minFundAmount - 1n,
+          })
+      ).to.be.revertedWithCustomError(cma, 'InvalidFundAmount');
+
+      expect(await cma.connect(user).getUserBalance()).to.equal(0);
+      expect(await cma.connect(user).getUserContracts()).to.have.length(0);
+    });
+
+    it('rejects insertContract funding that exceeds maxUserFunds', async function () {
+      const maxUserFunds = 1_000n;
+      await cma.setMaxUserFunds(maxUserFunds);
+      await cma.connect(user).fundBalance({ value: 900n });
+
+      await expect(
+        cma
+          .connect(user)
+          .insertContract(PROGRAM, MAX_BID, true, false, 0, { value: 101n })
+      ).to.be.revertedWithCustomError(cma, 'ExceedsMaxUserFunds');
+
+      expect(await cma.connect(user).getUserBalance()).to.equal(900n);
+      expect(await cma.connect(user).getUserContracts()).to.have.length(0);
+    });
+
+    it('allows insertContract funding up to exactly maxUserFunds', async function () {
+      const maxUserFunds = 1_000n;
+      await cma.setMinFundAmount(100n);
+      await cma.setMaxUserFunds(maxUserFunds);
+      await cma.connect(user).fundBalance({ value: 900n });
+
+      await cma
+        .connect(user)
+        .insertContract(PROGRAM, MAX_BID, true, false, 0, { value: 100n });
+
+      expect(await cma.connect(user).getUserBalance()).to.equal(maxUserFunds);
+      expect(await cma.connect(user).getUserContracts()).to.have.length(1);
+    });
+
+    it('preserves fundBalance minimum and cumulative maximum validation', async function () {
+      await cma.setMinFundAmount(100n);
+      await cma.setMaxUserFunds(1_000n);
+
+      await cma.connect(user).fundBalance({ value: 100n });
+      await expect(
+        cma.connect(user).fundBalance({ value: 99n })
+      ).to.be.revertedWithCustomError(cma, 'InvalidFundAmount');
+      await expect(
+        cma.connect(user).fundBalance({ value: 901n })
+      ).to.be.revertedWithCustomError(cma, 'ExceedsMaxUserFunds');
+
+      expect(await cma.connect(user).getUserBalance()).to.equal(100n);
+    });
+
     it('reverts when autoActivate=true with maxActivationCost=0', async function () {
       await expect(
         cma
