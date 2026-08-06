@@ -175,6 +175,7 @@ interface ICacheManagerAutomation {
     error TooManyActivations();
     error InvalidActivationCost();
     error UnauthorizedSender();
+    error OwnershipRenunciationDisabled();
 
     // Functions
     function insertContract(

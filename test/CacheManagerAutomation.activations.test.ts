@@ -73,6 +73,67 @@ describe('CacheManagerAutomation — Activations', function () {
       });
   }
 
+  describe('ownership safety', function () {
+    it('requires the pending owner to accept an ownership transfer', async function () {
+      await expect(cma.transferOwnership(user.address))
+        .to.emit(cma, 'OwnershipTransferStarted')
+        .withArgs(owner.address, user.address);
+
+      expect(await cma.owner()).to.equal(owner.address);
+      expect(await cma.pendingOwner()).to.equal(user.address);
+      await expect(
+        cma.connect(user).setMaxContractsPerUser(51)
+      ).to.be.revertedWith('Ownable: caller is not the owner');
+      await cma.setMaxContractsPerUser(51);
+
+      await expect(cma.connect(user).acceptOwnership())
+        .to.emit(cma, 'OwnershipTransferred')
+        .withArgs(owner.address, user.address);
+
+      expect(await cma.owner()).to.equal(user.address);
+      expect(await cma.pendingOwner()).to.equal(hre.ethers.ZeroAddress);
+      await expect(cma.setMaxContractsPerUser(52)).to.be.revertedWith(
+        'Ownable: caller is not the owner'
+      );
+      await cma.connect(user).setMaxContractsPerUser(52);
+      expect(await cma.maxContractsPerUser()).to.equal(52);
+    });
+
+    it('rejects acceptance by an address other than the pending owner', async function () {
+      await cma.transferOwnership(user.address);
+
+      await expect(cma.acceptOwnership()).to.be.revertedWith(
+        'Ownable2Step: caller is not the new owner'
+      );
+
+      expect(await cma.owner()).to.equal(owner.address);
+      expect(await cma.pendingOwner()).to.equal(user.address);
+    });
+
+    it('allows the current owner to replace a mistaken pending owner', async function () {
+      const [, , replacement] = await hre.ethers.getSigners();
+      await cma.transferOwnership(user.address);
+
+      await expect(cma.transferOwnership(replacement.address))
+        .to.emit(cma, 'OwnershipTransferStarted')
+        .withArgs(owner.address, replacement.address);
+
+      expect(await cma.owner()).to.equal(owner.address);
+      expect(await cma.pendingOwner()).to.equal(replacement.address);
+      await expect(cma.connect(user).acceptOwnership()).to.be.revertedWith(
+        'Ownable2Step: caller is not the new owner'
+      );
+    });
+
+    it('disables ownership renunciation', async function () {
+      await expect(cma.renounceOwnership()).to.be.revertedWithCustomError(
+        cma,
+        'OwnershipRenunciationDisabled'
+      );
+      expect(await cma.owner()).to.equal(owner.address);
+    });
+  });
+
   describe('insertContract / updateContract', function () {
     it('allows inserting a contract without funding', async function () {
       await cma

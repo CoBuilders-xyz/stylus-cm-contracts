@@ -3,7 +3,7 @@ pragma solidity 0.8.30;
 
 // OpenZeppelin
 import {EnumerableSet} from '@openzeppelin/contracts/utils/structs/EnumerableSet.sol';
-import {Ownable} from '@openzeppelin/contracts/access/Ownable.sol';
+import {Ownable2Step} from '@openzeppelin/contracts/access/Ownable2Step.sol';
 import {ReentrancyGuard} from '@openzeppelin/contracts/security/ReentrancyGuard.sol';
 import {BiddingEscrow} from './BiddingEscrow.sol';
 
@@ -15,7 +15,7 @@ import '../interfaces/ICacheManagerAutomation.sol';
 /// @notice A automation contract that manages user bids for contract caching in the Stylus VM
 contract CacheManagerAutomation is
     ICacheManagerAutomation,
-    Ownable,
+    Ownable2Step,
     ReentrancyGuard
 {
     using EnumerableSet for EnumerableSet.AddressSet;
@@ -99,6 +99,11 @@ contract CacheManagerAutomation is
     // ------------------------------------------------------------------------
     // Admin functions
     // ------------------------------------------------------------------------
+
+    /// @notice Ownership renunciation is disabled to preserve administration.
+    function renounceOwnership() public view override onlyOwner {
+        revert OwnershipRenunciationDisabled();
+    }
 
     /// @notice Set maximum contracts per user
     /// @param _maxContractsPerUser New maximum contracts per user
