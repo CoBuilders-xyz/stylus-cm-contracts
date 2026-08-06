@@ -446,11 +446,32 @@ describe('CacheManagerAutomation — Activations', function () {
       await arbWasm.setVersion(7);
       await arbWasm.setDataFee(hre.ethers.parseEther('0.003'));
 
-      await expect(
-        cma.placeActivations([
-          { user: user.address, contractAddress: PROGRAM },
-        ])
-      ).to.emit(cma, 'ActivationPerformed');
+      const tx = await cma.placeActivations([
+        { user: user.address, contractAddress: PROGRAM },
+      ]);
+
+      await expect(tx).to.emit(cma, 'ActivationPerformed');
+      await expect(tx).to.emit(arbWasm, 'Activated');
+      expect(await cma.connect(user).getUserBalance()).to.equal(
+        FUNDING - MAX_ACTIVATION_COST
+      );
+    });
+
+    it('proceeds when programTimeLeft reverts with ProgramNeedsUpgrade', async function () {
+      await insertWithActivation();
+      await arbWasm.setTimeLeftRevertWithNeedsUpgrade(6, 7);
+      await arbWasm.setVersion(7);
+      await arbWasm.setDataFee(hre.ethers.parseEther('0.003'));
+
+      const tx = await cma.placeActivations([
+        { user: user.address, contractAddress: PROGRAM },
+      ]);
+
+      await expect(tx).to.emit(cma, 'ActivationPerformed');
+      await expect(tx).to.emit(arbWasm, 'Activated');
+      expect(await cma.connect(user).getUserBalance()).to.equal(
+        FUNDING - MAX_ACTIVATION_COST
+      );
     });
 
     it('skips when maxActivationCost > user escrow balance', async function () {

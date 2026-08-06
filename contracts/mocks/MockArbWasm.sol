@@ -8,6 +8,8 @@ import {IArbWasm} from '../interfaces/IExternalContracts.sol';
 contract MockArbWasm is IArbWasm {
     /// @dev Selector of `ProgramExpired(uint64)`.
     bytes4 public constant PROGRAM_EXPIRED_SELECTOR = 0xc9b12e52;
+    /// @dev Selector of `ProgramNeedsUpgrade(uint16,uint16)`.
+    bytes4 public constant PROGRAM_NEEDS_UPGRADE_SELECTOR = 0x637d968f;
 
     uint64 public defaultTimeLeft;
     uint16 public version;
@@ -60,6 +62,18 @@ contract MockArbWasm is IArbWasm {
         timeLeftRevertData = abi.encodeWithSelector(
             PROGRAM_EXPIRED_SELECTOR,
             ageInSeconds
+        );
+    }
+
+    function setTimeLeftRevertWithNeedsUpgrade(
+        uint16 programVersion,
+        uint16 stylusVersion
+    ) external {
+        timeLeftReverts = true;
+        timeLeftRevertData = abi.encodeWithSelector(
+            PROGRAM_NEEDS_UPGRADE_SELECTOR,
+            programVersion,
+            stylusVersion
         );
     }
 

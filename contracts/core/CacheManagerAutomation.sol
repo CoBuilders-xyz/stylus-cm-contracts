@@ -25,6 +25,9 @@ contract CacheManagerAutomation is
     /// ArbWasm.programTimeLeft reverts with this custom error once a program
     /// has expired in recent Nitro versions. Treated as "proceed to activate".
     bytes4 private constant PROGRAM_EXPIRED_SELECTOR = 0xc9b12e52;
+    /// @dev bytes4(keccak256("ProgramNeedsUpgrade(uint16,uint16)")); an old
+    /// program version must be reactivated against the current Stylus version.
+    bytes4 private constant PROGRAM_NEEDS_UPGRADE_SELECTOR = 0x637d968f;
     // Operational limits match the tested/default batch and pagination sizes.
     uint256 private constant MAX_BIDS_PER_ITERATION_LIMIT = 50;
     uint256 private constant MAX_USERS_PER_PAGE_LIMIT = 100;
@@ -797,7 +800,7 @@ contract CacheManagerAutomation is
         // Nitro version:
         //   - Old: programTimeLeft returns 0.
         //   - New: programTimeLeft reverts with ProgramExpired(uint64).
-        // Anything else (still valid, never activated, other revert) is "skip".
+        // ProgramNeedsUpgrade also proceeds; never-activated/unknown errors skip.
         try arbWasm.programTimeLeft(contractAddress) returns (uint64 timeLeft) {
             if (timeLeft != 0) return ActivationResult(false, cfg);
         } catch (bytes memory revertData) {
@@ -807,7 +810,10 @@ contract CacheManagerAutomation is
                     sel := mload(add(revertData, 32))
                 }
             }
-            if (sel != PROGRAM_EXPIRED_SELECTOR)
+            if (
+                sel != PROGRAM_EXPIRED_SELECTOR &&
+                sel != PROGRAM_NEEDS_UPGRADE_SELECTOR
+            )
                 return ActivationResult(false, cfg);
         }
 
