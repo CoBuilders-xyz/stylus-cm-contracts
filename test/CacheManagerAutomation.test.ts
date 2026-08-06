@@ -32,7 +32,7 @@ describe('cacheManagerAutomation', async function () {
   async function insertContract(
     contractAddress: string,
     maxBid = DEFAULT_MAX_BID,
-    enabled = true,
+    biddingEnabled = true,
     wallet?: Wallet | Signer,
     funding?: bigint,
     autoActivate = false,
@@ -44,7 +44,7 @@ describe('cacheManagerAutomation', async function () {
       .insertContract(
         contractAddress,
         maxBid,
-        enabled,
+        biddingEnabled,
         autoActivate,
         maxActivationCost,
         { value: funding || 0n }
@@ -630,7 +630,7 @@ describe('cacheManagerAutomation', async function () {
         expect(updatedContract?.maxBid).to.equal(updatedMaxBid);
       });
 
-      it('Should update a contract enabled status', async function () {
+      it('Should update automated bidding status', async function () {
         const [contract] = await deployDummyWASMContracts(1);
 
         const contractToCacheAddress = hre.ethers.getAddress(contract);
@@ -655,10 +655,10 @@ describe('cacheManagerAutomation', async function () {
         const updatedContract = userContracts.find(
           (c) => c.contractAddress === contractToCacheAddress
         );
-        expect(updatedContract?.enabled).to.equal(false);
+        expect(updatedContract?.biddingEnabled).to.equal(false);
       });
 
-      it('Should update a contract enabled status and max bid', async function () {
+      it('Should update automated bidding status and max bid', async function () {
         const [contract] = await deployDummyWASMContracts(1);
 
         const contractToCacheAddress = hre.ethers.getAddress(contract);
@@ -679,7 +679,7 @@ describe('cacheManagerAutomation', async function () {
         const updatedContract = userContracts.find(
           (c) => c.contractAddress === contractToCacheAddress
         );
-        expect(updatedContract?.enabled).to.equal(false);
+        expect(updatedContract?.biddingEnabled).to.equal(false);
         expect(updatedContract?.maxBid).to.equal(updatedMaxBid);
       });
 
@@ -707,7 +707,7 @@ describe('cacheManagerAutomation', async function () {
         let updatedContract = userContracts.find(
           (c) => c.contractAddress === contractToCacheAddress
         );
-        expect(updatedContract?.enabled).to.equal(false);
+        expect(updatedContract?.biddingEnabled).to.equal(false);
 
         await cmaDeployment.cacheManagerAutomation
           .connect(user)
@@ -720,7 +720,7 @@ describe('cacheManagerAutomation', async function () {
         updatedContract = userContracts.find(
           (c) => c.contractAddress === contractToCacheAddress
         );
-        expect(updatedContract?.enabled).to.equal(true);
+        expect(updatedContract?.biddingEnabled).to.equal(true);
       });
     });
   });

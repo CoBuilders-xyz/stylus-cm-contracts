@@ -189,7 +189,7 @@ describe('CacheManagerAutomation — Activations', function () {
 
       const [cfg] = await cma.connect(user).getUserContracts();
       expect(cfg.maxBid).to.equal(MAX_BID);
-      expect(cfg.enabled).to.equal(true);
+      expect(cfg.biddingEnabled).to.equal(true);
       expect(cfg.autoActivate).to.equal(true);
       expect(cfg.maxActivationCost).to.equal(MAX_ACTIVATION_COST);
     });
@@ -285,6 +285,31 @@ describe('CacheManagerAutomation — Activations', function () {
         { user: user.address, contractAddress: PROGRAM },
       ]);
       await expect(tx).to.not.emit(cma, 'ActivationPerformed');
+    });
+
+    it('allows activation when automated bidding is disabled', async function () {
+      await cma
+        .connect(user)
+        .insertContract(
+          PROGRAM,
+          MAX_BID,
+          false,
+          true,
+          MAX_ACTIVATION_COST,
+          { value: FUNDING }
+        );
+      await arbWasm.setDefaultTimeLeft(0);
+      await arbWasm.setVersion(7);
+
+      const tx = await cma.placeActivations([
+        { user: user.address, contractAddress: PROGRAM },
+      ]);
+
+      await expect(tx).to.emit(cma, 'ActivationPerformed');
+      await expect(tx).to.emit(arbWasm, 'Activated');
+      expect(await cma.connect(user).getUserBalance()).to.equal(
+        FUNDING - MAX_ACTIVATION_COST
+      );
     });
 
     it('skips when programTimeLeft != 0 (not expired)', async function () {

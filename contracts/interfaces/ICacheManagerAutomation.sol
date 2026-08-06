@@ -8,7 +8,9 @@ interface ICacheManagerAutomation {
     struct ContractConfig {
         address contractAddress;
         uint256 maxBid;
-        bool enabled;
+        /// @notice Controls automated bidding only; activation is independently
+        ///         controlled by autoActivate.
+        bool biddingEnabled;
         bool autoActivate;
         uint256 maxActivationCost;
     }
@@ -178,14 +180,14 @@ interface ICacheManagerAutomation {
     function insertContract(
         address _contract,
         uint256 _maxBid,
-        bool _enabled,
+        bool _biddingEnabled,
         bool _autoActivate,
         uint256 _maxActivationCost
     ) external payable;
     function updateContract(
         address _contract,
         uint256 _maxBid,
-        bool _enabled,
+        bool _biddingEnabled,
         bool _autoActivate,
         uint256 _maxActivationCost
     ) external;

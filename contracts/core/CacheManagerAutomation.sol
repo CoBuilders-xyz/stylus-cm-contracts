@@ -213,7 +213,7 @@ contract CacheManagerAutomation is
     function insertContract(
         address _contract,
         uint256 _maxBid,
-        bool _enabled,
+        bool _biddingEnabled,
         bool _autoActivate,
         uint256 _maxActivationCost
     ) external payable {
@@ -248,7 +248,7 @@ contract CacheManagerAutomation is
             ContractConfig({
                 contractAddress: _contract,
                 maxBid: _maxBid,
-                enabled: _enabled,
+                biddingEnabled: _biddingEnabled,
                 autoActivate: _autoActivate,
                 maxActivationCost: _maxActivationCost
             })
@@ -266,7 +266,7 @@ contract CacheManagerAutomation is
     function updateContract(
         address _contract,
         uint256 _maxBid,
-        bool _enabled,
+        bool _biddingEnabled,
         bool _autoActivate,
         uint256 _maxActivationCost
     ) external {
@@ -281,7 +281,7 @@ contract CacheManagerAutomation is
         for (uint256 i = 0; i < contracts.length; i++) {
             if (contracts[i].contractAddress == _contract) {
                 contracts[i].maxBid = _maxBid;
-                contracts[i].enabled = _enabled;
+                contracts[i].biddingEnabled = _biddingEnabled;
                 contracts[i].autoActivate = _autoActivate;
                 contracts[i].maxActivationCost = _maxActivationCost;
                 emit ContractUpdated(msg.sender, _contract, _maxBid);
@@ -618,12 +618,12 @@ contract CacheManagerAutomation is
 
         // Address is valid & contract is not cached
 
-        // Is contract enabled and contract belongs to user?
+        // Is automated bidding enabled and does the contract belong to user?
         ContractConfig[] storage contracts = userContracts[user];
         for (uint256 j = 0; j < contracts.length; j++) {
             if (contracts[j].contractAddress == contractAddress) {
-                // Is contract enabled?
-                if (!contracts[j].enabled)
+                // Is automated bidding enabled?
+                if (!contracts[j].biddingEnabled)
                     return BidResult(false, contracts[j], 0);
 
                 // Calculate bid amount
