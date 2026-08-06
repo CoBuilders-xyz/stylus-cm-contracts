@@ -176,6 +176,37 @@ describe('CacheManagerAutomation — Activations', function () {
       expect(cfg.maxActivationCost).to.equal(newCost);
     });
 
+    it('updateContract rejects a max bid below minMaxBidAmount without changing state', async function () {
+      await insertWithActivation();
+      const minMaxBidAmount = MAX_BID + 100n;
+      await cma.setMinMaxBidAmount(minMaxBidAmount);
+
+      await expect(
+        cma
+          .connect(user)
+          .updateContract(PROGRAM, minMaxBidAmount - 1n, false, false, 0)
+      ).to.be.revertedWithCustomError(cma, 'InvalidBid');
+
+      const [cfg] = await cma.connect(user).getUserContracts();
+      expect(cfg.maxBid).to.equal(MAX_BID);
+      expect(cfg.enabled).to.equal(true);
+      expect(cfg.autoActivate).to.equal(true);
+      expect(cfg.maxActivationCost).to.equal(MAX_ACTIVATION_COST);
+    });
+
+    it('updateContract accepts a max bid equal to minMaxBidAmount', async function () {
+      await insertWithActivation();
+      const minMaxBidAmount = MAX_BID + 100n;
+      await cma.setMinMaxBidAmount(minMaxBidAmount);
+
+      await cma
+        .connect(user)
+        .updateContract(PROGRAM, minMaxBidAmount, true, false, 0);
+
+      const [cfg] = await cma.connect(user).getUserContracts();
+      expect(cfg.maxBid).to.equal(minMaxBidAmount);
+    });
+
     it('updateContract with autoActivate=true and maxActivationCost=0 reverts', async function () {
       await insertWithActivation();
       await expect(

@@ -271,6 +271,7 @@ contract CacheManagerAutomation is
         uint256 _maxActivationCost
     ) external {
         if (_contract == address(0)) revert InvalidAddress();
+        if (_maxBid < minMaxBidAmount) revert InvalidBid();
         if (_autoActivate && _maxActivationCost == 0)
             revert InvalidActivationCost();
         if (_maxActivationCost > maxUserFunds)
