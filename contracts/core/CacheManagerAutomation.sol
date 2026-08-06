@@ -25,6 +25,11 @@ contract CacheManagerAutomation is
     /// ArbWasm.programTimeLeft reverts with this custom error once a program
     /// has expired in recent Nitro versions. Treated as "proceed to activate".
     bytes4 private constant PROGRAM_EXPIRED_SELECTOR = 0xc9b12e52;
+    // Operational limits match the tested/default batch and pagination sizes.
+    uint256 private constant MAX_BIDS_PER_ITERATION_LIMIT = 50;
+    uint256 private constant MAX_USERS_PER_PAGE_LIMIT = 100;
+    uint256 private constant MAX_HORIZON_SECONDS = 365 days;
+    uint192 private constant MAX_BID_INCREMENT = 1 ether;
 
     // ------------------------------------------------------------------------
     // Configuration state variables (modifiable by owner)
@@ -121,7 +126,10 @@ contract CacheManagerAutomation is
     /// @notice Set minimum fund amount
     /// @param _minFundAmount New minimum fund amount
     function setMinFundAmount(uint256 _minFundAmount) external onlyOwner {
-        require(_minFundAmount > 0, 'Min fund amount must be greater than 0');
+        require(
+            _minFundAmount > 0 && _minFundAmount <= maxUserFunds,
+            'Min fund amount must be within user funds limit'
+        );
         uint256 oldValue = minFundAmount;
         minFundAmount = _minFundAmount;
         emit MinFundAmountUpdated(oldValue, _minFundAmount);
@@ -129,8 +137,13 @@ contract CacheManagerAutomation is
 
     /// @notice Set maximum user funds
     /// @param _maxUserFunds New maximum user funds
+    /// @dev Applied prospectively; existing balances above a lowered limit can
+    ///      still be withdrawn but cannot be funded further.
     function setMaxUserFunds(uint256 _maxUserFunds) external onlyOwner {
-        require(_maxUserFunds > 0, 'Max user funds must be greater than 0');
+        require(
+            _maxUserFunds >= minFundAmount,
+            'Max user funds must cover minimum fund amount'
+        );
         uint256 oldValue = maxUserFunds;
         maxUserFunds = _maxUserFunds;
         emit MaxUserFundsUpdated(oldValue, _maxUserFunds);
@@ -142,8 +155,9 @@ contract CacheManagerAutomation is
         uint256 _maxBidsPerIteration
     ) external onlyOwner {
         require(
-            _maxBidsPerIteration > 0,
-            'Max bids per iteration must be greater than 0'
+            _maxBidsPerIteration > 0 &&
+                _maxBidsPerIteration <= MAX_BIDS_PER_ITERATION_LIMIT,
+            'Max bids per iteration out of range'
         );
         uint256 oldValue = maxBidsPerIteration;
         maxBidsPerIteration = _maxBidsPerIteration;
@@ -154,8 +168,9 @@ contract CacheManagerAutomation is
     /// @param _maxUsersPerPage New maximum users per page
     function setMaxUsersPerPage(uint256 _maxUsersPerPage) external onlyOwner {
         require(
-            _maxUsersPerPage > 0,
-            'Max users per page must be greater than 0'
+            _maxUsersPerPage > 0 &&
+                _maxUsersPerPage <= MAX_USERS_PER_PAGE_LIMIT,
+            'Max users per page out of range'
         );
         uint256 oldValue = maxUsersPerPage;
         maxUsersPerPage = _maxUsersPerPage;
@@ -163,9 +178,12 @@ contract CacheManagerAutomation is
     }
 
     /// @notice Set cache threshold percentage
-    /// @param _cacheThreshold New cache threshold (0-100)
+    /// @param _cacheThreshold New cache threshold (1-100)
     function setCacheThreshold(uint256 _cacheThreshold) external onlyOwner {
-        require(_cacheThreshold <= 100, 'Cache threshold must be <= 100');
+        require(
+            _cacheThreshold > 0 && _cacheThreshold <= 100,
+            'Cache threshold must be between 1 and 100'
+        );
         uint256 oldValue = cacheThreshold;
         cacheThreshold = _cacheThreshold;
         emit CacheThresholdUpdated(oldValue, _cacheThreshold);
@@ -174,7 +192,11 @@ contract CacheManagerAutomation is
     /// @notice Set horizon seconds for bid decay calculation
     /// @param _horizonSeconds New horizon seconds
     function setHorizonSeconds(uint256 _horizonSeconds) external onlyOwner {
-        require(_horizonSeconds > 0, 'Horizon seconds must be greater than 0');
+        require(
+            _horizonSeconds > 0 &&
+                _horizonSeconds <= MAX_HORIZON_SECONDS,
+            'Horizon seconds out of range'
+        );
         uint256 oldValue = horizonSeconds;
         horizonSeconds = _horizonSeconds;
         emit HorizonSecondsUpdated(oldValue, _horizonSeconds);
@@ -183,7 +205,10 @@ contract CacheManagerAutomation is
     /// @notice Set bid increment for uniqueness
     /// @param _bidIncrement New bid increment
     function setBidIncrement(uint192 _bidIncrement) external onlyOwner {
-        require(_bidIncrement > 0, 'Bid increment must be greater than 0');
+        require(
+            _bidIncrement > 0 && _bidIncrement <= MAX_BID_INCREMENT,
+            'Bid increment out of range'
+        );
         uint192 oldValue = bidIncrement;
         bidIncrement = _bidIncrement;
         emit BidIncrementUpdated(oldValue, _bidIncrement);
@@ -591,6 +616,7 @@ contract CacheManagerAutomation is
 
         uint256 bidValue = decayValue < userMaxBid ? decayValue : userMaxBid;
 
+        if (bidValue > type(uint192).max) return type(uint192).max;
         return uint192(bidValue);
     }
 

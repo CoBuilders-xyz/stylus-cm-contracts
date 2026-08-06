@@ -4,6 +4,7 @@ import { HardhatEthersSigner } from '@nomicfoundation/hardhat-ethers/signers';
 
 import type {
   CacheManagerAutomation,
+  CacheManagerAutomationHarness,
   MockArbWasm,
   MockArbWasmCache,
   MockCacheManager,
@@ -316,5 +317,26 @@ describe('CacheManagerAutomation — Bids', function () {
     expect(await cma.connect(poisonedUser).getUserBalance()).to.equal(
       FUNDING - MIN_BID - (MIN_BID + 1n) - (MIN_BID + 2n)
     );
+  });
+
+  it('saturates an oversized calculated bid instead of truncating it', async function () {
+    const maxUint192 = (1n << 192n) - 1n;
+    await cacheManager.setMinBid(maxUint192);
+    const HarnessFactory = await hre.ethers.getContractFactory(
+      'CacheManagerAutomationHarness'
+    );
+    const harness = (await HarnessFactory.deploy(
+      await cacheManager.getAddress(),
+      await cma.arbWasmCache(),
+      await cma.arbWasm()
+    )) as CacheManagerAutomationHarness;
+
+    expect(
+      await harness.calculateBidAmount(
+        hre.ethers.MaxUint256,
+        1,
+        maxUint192
+      )
+    ).to.equal(maxUint192);
   });
 });

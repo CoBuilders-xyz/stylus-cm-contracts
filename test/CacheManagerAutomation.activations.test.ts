@@ -242,6 +242,104 @@ describe('CacheManagerAutomation — Activations', function () {
     });
   });
 
+  describe('owner configuration bounds', function () {
+    it('keeps minFundAmount at or below maxUserFunds', async function () {
+      const maxUserFunds = 1_000n;
+      await cma.setMaxUserFunds(maxUserFunds);
+
+      await expect(
+        cma.setMinFundAmount(maxUserFunds + 1n)
+      ).to.be.revertedWith('Min fund amount must be within user funds limit');
+      expect(await cma.minFundAmount()).to.equal(1n);
+
+      await cma.setMinFundAmount(maxUserFunds);
+      expect(await cma.minFundAmount()).to.equal(maxUserFunds);
+    });
+
+    it('keeps maxUserFunds at or above minFundAmount', async function () {
+      const minFundAmount = 1_000n;
+      await cma.setMinFundAmount(minFundAmount);
+
+      await expect(
+        cma.setMaxUserFunds(minFundAmount - 1n)
+      ).to.be.revertedWith(
+        'Max user funds must cover minimum fund amount'
+      );
+      expect(await cma.maxUserFunds()).to.equal(hre.ethers.parseEther('1'));
+
+      await cma.setMaxUserFunds(minFundAmount);
+      expect(await cma.maxUserFunds()).to.equal(minFundAmount);
+    });
+
+    it('restricts cacheThreshold to the inclusive 1-100 range', async function () {
+      await expect(cma.setCacheThreshold(0)).to.be.revertedWith(
+        'Cache threshold must be between 1 and 100'
+      );
+      await expect(cma.setCacheThreshold(101)).to.be.revertedWith(
+        'Cache threshold must be between 1 and 100'
+      );
+      expect(await cma.cacheThreshold()).to.equal(98n);
+
+      await cma.setCacheThreshold(1);
+      await cma.setCacheThreshold(100);
+      expect(await cma.cacheThreshold()).to.equal(100n);
+    });
+
+    it('caps maxUsersPerPage at 100', async function () {
+      await expect(cma.setMaxUsersPerPage(0)).to.be.revertedWith(
+        'Max users per page out of range'
+      );
+      await expect(cma.setMaxUsersPerPage(101)).to.be.revertedWith(
+        'Max users per page out of range'
+      );
+      expect(await cma.maxUsersPerPage()).to.equal(100n);
+
+      await cma.setMaxUsersPerPage(100);
+      expect(await cma.maxUsersPerPage()).to.equal(100n);
+    });
+
+    it('caps maxBidsPerIteration at the tested 50-request limit', async function () {
+      await expect(cma.setMaxBidsPerIteration(0)).to.be.revertedWith(
+        'Max bids per iteration out of range'
+      );
+      await expect(cma.setMaxBidsPerIteration(51)).to.be.revertedWith(
+        'Max bids per iteration out of range'
+      );
+      expect(await cma.maxBidsPerIteration()).to.equal(50n);
+
+      await cma.setMaxBidsPerIteration(50);
+      expect(await cma.maxBidsPerIteration()).to.equal(50n);
+    });
+
+    it('caps horizonSeconds at 365 days', async function () {
+      const maxHorizon = 365n * 24n * 60n * 60n;
+      await expect(cma.setHorizonSeconds(0)).to.be.revertedWith(
+        'Horizon seconds out of range'
+      );
+      await expect(
+        cma.setHorizonSeconds(maxHorizon + 1n)
+      ).to.be.revertedWith('Horizon seconds out of range');
+      expect(await cma.horizonSeconds()).to.equal(30n * 24n * 60n * 60n);
+
+      await cma.setHorizonSeconds(maxHorizon);
+      expect(await cma.horizonSeconds()).to.equal(maxHorizon);
+    });
+
+    it('caps bidIncrement at 1 ether', async function () {
+      const maxIncrement = hre.ethers.parseEther('1');
+      await expect(cma.setBidIncrement(0)).to.be.revertedWith(
+        'Bid increment out of range'
+      );
+      await expect(cma.setBidIncrement(maxIncrement + 1n)).to.be.revertedWith(
+        'Bid increment out of range'
+      );
+      expect(await cma.bidIncrement()).to.equal(1n);
+
+      await cma.setBidIncrement(maxIncrement);
+      expect(await cma.bidIncrement()).to.equal(maxIncrement);
+    });
+  });
+
   describe('receive()', function () {
     it('rejects ETH from untrusted senders', async function () {
       await expect(
