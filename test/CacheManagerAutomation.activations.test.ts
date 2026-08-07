@@ -3,6 +3,7 @@ import hre from 'hardhat';
 import { HardhatEthersSigner } from '@nomicfoundation/hardhat-ethers/signers';
 
 import type {
+  BiddingEscrow,
   CacheManagerAutomation,
   MockArbWasm,
   MockArbWasmCache,
@@ -11,6 +12,7 @@ import type {
 
 describe('CacheManagerAutomation — Activations', function () {
   let cma: CacheManagerAutomation;
+  let escrow: BiddingEscrow;
   let arbWasm: MockArbWasm;
   let arbWasmCache: MockArbWasmCache;
   let cacheManager: MockCacheManager;
@@ -57,6 +59,10 @@ describe('CacheManagerAutomation — Activations', function () {
       await arbWasmCache.getAddress(),
       await arbWasm.getAddress()
     )) as CacheManagerAutomation;
+    escrow = (await hre.ethers.getContractAt(
+      'BiddingEscrow',
+      await cma.escrow()
+    )) as BiddingEscrow;
   });
 
   async function insertWithActivation(
@@ -135,6 +141,16 @@ describe('CacheManagerAutomation — Activations', function () {
   });
 
   describe('insertContract / updateContract', function () {
+    it('uses Withdrawn only when funds are returned to the user', async function () {
+      await cma.connect(user).fundBalance({ value: FUNDING });
+
+      await expect(cma.connect(user).withdrawBalance())
+        .to.emit(escrow, 'Withdrawn')
+        .withArgs(user.address, FUNDING);
+
+      expect(await cma.connect(user).getUserBalance()).to.equal(0);
+    });
+
     it('allows inserting a contract without funding', async function () {
       await cma
         .connect(user)
@@ -574,6 +590,13 @@ describe('CacheManagerAutomation — Activations', function () {
           MAX_ACTIVATION_COST,
           0,
           FUNDING - MAX_ACTIVATION_COST
+        );
+      await expect(tx)
+        .to.emit(escrow, 'WithdrawnForAutomation')
+        .withArgs(
+          user.address,
+          await cma.getAddress(),
+          MAX_ACTIVATION_COST
         );
 
       expect(await cma.connect(user).getUserBalance()).to.equal(

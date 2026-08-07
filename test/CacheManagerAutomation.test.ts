@@ -69,6 +69,9 @@ describe('cacheManagerAutomation', async function () {
     // Calculate event signatures for BiddingEscrow events
     const depositedSignature = hre.ethers.id('Deposited(address,uint256)');
     const withdrawnSignature = hre.ethers.id('Withdrawn(address,uint256)');
+    const automationWithdrawalSignature = hre.ethers.id(
+      'WithdrawnForAutomation(address,address,uint256)'
+    );
 
     const events: Array<{ eventName: string; args: any }> = [];
 
@@ -124,6 +127,24 @@ describe('cacheManagerAutomation', async function () {
               `\t   Args: ${payee.slice(0, 10)}..., ${hre.ethers.formatEther(
                 amount
               )} ETH`
+            );
+          }
+        } else if (topic0 === automationWithdrawalSignature) {
+          const depositor = '0x' + log.topics[1].slice(26);
+          const recipient = '0x' + log.topics[2].slice(26);
+          const amount = log.data;
+          events.push({
+            eventName: 'WithdrawnForAutomation',
+            args: [depositor, recipient, amount],
+          });
+          if (showLogs) {
+            console.log(`\t${index + 1}. 🤖 WithdrawnForAutomation`);
+            console.log(`\t   Contract: BiddingEscrow`);
+            console.log(
+              `\t   Args: ${depositor.slice(0, 10)}... -> ${recipient.slice(
+                0,
+                10
+              )}..., ${hre.ethers.formatEther(amount)} ETH`
             );
           }
         } else if (topic0 === withdrawnSignature) {

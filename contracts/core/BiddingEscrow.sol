@@ -17,6 +17,11 @@ contract BiddingEscrow is Ownable {
 
     event Deposited(address indexed payee, uint256 weiAmount);
     event Withdrawn(address indexed payee, uint256 weiAmount);
+    event WithdrawnForAutomation(
+        address indexed depositor,
+        address indexed recipient,
+        uint256 weiAmount
+    );
 
     mapping(address => uint256) private _deposits;
 
@@ -68,9 +73,9 @@ contract BiddingEscrow is Ownable {
      * @param depositor The address whose funds will be partially withdrawn
      * @param amount The amount to withdraw for the protocol operation
      *
-     * Emits a {Withdrawn} event.
+     * Emits a {WithdrawnForAutomation} event.
      */
-    function withdrawForBid(
+    function withdrawForAutomation(
         address depositor,
         uint256 amount
     ) public onlyOwner {
@@ -82,8 +87,9 @@ contract BiddingEscrow is Ownable {
 
         _deposits[depositor] = balance - amount;
 
-        payable(owner()).sendValue(amount);
+        address recipient = owner();
+        payable(recipient).sendValue(amount);
 
-        emit Withdrawn(depositor, amount);
+        emit WithdrawnForAutomation(depositor, recipient, amount);
     }
 }

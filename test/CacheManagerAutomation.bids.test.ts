@@ -3,6 +3,7 @@ import hre from 'hardhat';
 import { HardhatEthersSigner } from '@nomicfoundation/hardhat-ethers/signers';
 
 import type {
+  BiddingEscrow,
   CacheManagerAutomation,
   CacheManagerAutomationHarness,
   MockArbWasm,
@@ -12,6 +13,7 @@ import type {
 
 describe('CacheManagerAutomation — Bids', function () {
   let cma: CacheManagerAutomation;
+  let escrow: BiddingEscrow;
   let cacheManager: MockCacheManager;
   let owner: HardhatEthersSigner;
   let poisonedUser: HardhatEthersSigner;
@@ -54,6 +56,10 @@ describe('CacheManagerAutomation — Bids', function () {
       await arbWasmCache.getAddress(),
       await arbWasm.getAddress()
     )) as CacheManagerAutomation;
+    escrow = (await hre.ethers.getContractAt(
+      'BiddingEscrow',
+      await cma.escrow()
+    )) as BiddingEscrow;
 
     await cacheManager.setMinBid(MIN_BID);
     await cacheManager.setCache(100, 100, 0);
@@ -108,6 +114,16 @@ describe('CacheManagerAutomation — Bids', function () {
     expect(await cma.connect(validUser).getUserBalance()).to.equal(
       FUNDING - MIN_BID - 1n
     );
+  });
+
+  it('reports the CMA recipient when escrow funds a paid bid', async function () {
+    const tx = await cma.connect(owner).placeBids([
+      { user: validUser.address, contractAddress: VALID_PROGRAM },
+    ]);
+
+    await expect(tx)
+      .to.emit(escrow, 'WithdrawnForAutomation')
+      .withArgs(validUser.address, await cma.getAddress(), MIN_BID);
   });
 
   it('preserves zero-value bids when the cache has free capacity', async function () {

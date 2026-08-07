@@ -398,7 +398,7 @@ contract CacheManagerAutomation is
 
     /// @notice Only accept ETH from the three trusted protocol contracts the
     /// activation/bidding flows rely on: the BiddingEscrow (forwards user
-    /// deposits to this contract via withdrawForBid), the ArbWasm precompile
+    /// deposits to this contract via withdrawForAutomation), the ArbWasm precompile
     /// (refunds excess msg.value after activateProgram), and the CacheManager
     /// (if it ever refunds after a placeBid). Stranded donations from any
     /// other source are rejected so they can't pollute the balance-delta
@@ -715,7 +715,7 @@ contract CacheManagerAutomation is
             }
         } else {
             // Paid bid - withdraw from escrow and place bid
-            try escrow.withdrawForBid(payable(user), bidAmount) {
+            try escrow.withdrawForAutomation(payable(user), bidAmount) {
                 try cacheManager.placeBid{value: bidAmount}(contractAddress) {
                     uint256 userBalance = escrow.depositsOf(user);
                     emit BidPlaced(
@@ -834,7 +834,7 @@ contract CacheManagerAutomation is
         uint256 value
     ) internal {
         // Pull value from user's escrow into this contract.
-        try escrow.withdrawForBid(payable(user), value) {
+        try escrow.withdrawForAutomation(payable(user), value) {
             _doActivation(user, cfg.contractAddress, value);
         } catch {
             emit ActivationError(
