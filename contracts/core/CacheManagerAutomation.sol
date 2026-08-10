@@ -610,7 +610,7 @@ contract CacheManagerAutomation is
 
     /// @notice Internal function to check if a contract needs bidding
     function _shouldBid(
-        BidRequest memory bidRequest,
+        BidRequest calldata bidRequest,
         uint256 bidIndex
     ) internal view returns (BidResult memory) {
         address user = bidRequest.user;
@@ -748,7 +748,7 @@ contract CacheManagerAutomation is
     ///      how much to spend (always exactly cfg.maxActivationCost, mirroring
     ///      how _shouldBid derives the bid amount internally from cfg.maxBid).
     function _shouldActivate(
-        ActivationRequest memory request
+        ActivationRequest calldata request
     ) internal view returns (ActivationResult memory) {
         address user = request.user;
         address contractAddress = request.contractAddress;
