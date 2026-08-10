@@ -545,8 +545,6 @@ contract CacheManagerAutomation is
 
         // Check if there are more users
         hasMore = offset + usersToReturn < userCount;
-
-        return (userData, hasMore);
     }
 
     /// @notice Get total number of users with contracts

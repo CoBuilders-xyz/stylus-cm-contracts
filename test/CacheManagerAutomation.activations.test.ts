@@ -417,6 +417,44 @@ describe('CacheManagerAutomation — Activations', function () {
     });
   });
 
+  describe('getContractsPaginated', function () {
+    it('returns an empty page when the offset is out of range', async function () {
+      const [userData, hasMore] = await cma.getContractsPaginated(0, 10);
+
+      expect(userData).to.have.lengthOf(0);
+      expect(hasMore).to.equal(false);
+    });
+
+    it('returns the requested page and reports whether more users remain', async function () {
+      const [, secondUser, thirdUser, fourthUser] =
+        await hre.ethers.getSigners();
+      const users = [secondUser, thirdUser, fourthUser];
+
+      for (const signer of users) {
+        await cma
+          .connect(signer)
+          .insertContract(PROGRAM, MAX_BID, true, false, 0);
+      }
+
+      const [firstPage, firstHasMore] =
+        await cma.getContractsPaginated(0, 2);
+      expect(firstPage).to.have.lengthOf(2);
+      expect(firstPage.map((entry) => entry.user)).to.deep.equal(
+        users.slice(0, 2).map((signer) => signer.address)
+      );
+      expect(firstPage[0].contracts).to.have.lengthOf(1);
+      expect(firstPage[0].contracts[0].contractAddress).to.equal(PROGRAM);
+      expect(firstHasMore).to.equal(true);
+
+      const [lastPage, lastHasMore] =
+        await cma.getContractsPaginated(2, 2);
+      expect(lastPage).to.have.lengthOf(1);
+      expect(lastPage[0].user).to.equal(fourthUser.address);
+      expect(lastPage[0].contracts[0].contractAddress).to.equal(PROGRAM);
+      expect(lastHasMore).to.equal(false);
+    });
+  });
+
   describe('receive()', function () {
     it('rejects ETH from untrusted senders', async function () {
       await expect(
