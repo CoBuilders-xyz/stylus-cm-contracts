@@ -48,14 +48,12 @@ export const ARB_WASM_ADDRESSES = {
 export const DEFAULT_CONFIG = {
   maxContractsPerUser: 100,
   maxUserFunds: '1000000000000000000', // 1 ETH in wei
-  upgradeDelay: 86400, // 24 hours in seconds
 };
 
 // Gas limits for different operations
 export const GAS_LIMITS = {
   deployment: 3000000,
   initialization: 500000,
-  upgrade: 1000000,
 };
 
 export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';

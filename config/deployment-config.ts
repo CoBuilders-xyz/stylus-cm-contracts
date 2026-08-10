@@ -11,7 +11,6 @@ export interface DeploymentConfig {
   arbWasmAddress: string;
   maxContractsPerUser: number;
   maxUserFunds: string;
-  upgradeDelay: number;
   verify: boolean;
 }
 
@@ -22,7 +21,6 @@ export const deploymentConfigs: Record<string, DeploymentConfig> = {
     arbWasmAddress: ARB_WASM_ADDRESSES.arbitrumOne,
     maxContractsPerUser: DEFAULT_CONFIG.maxContractsPerUser,
     maxUserFunds: DEFAULT_CONFIG.maxUserFunds,
-    upgradeDelay: DEFAULT_CONFIG.upgradeDelay,
     verify: true,
   },
   arbitrumSepolia: {
@@ -31,7 +29,6 @@ export const deploymentConfigs: Record<string, DeploymentConfig> = {
     arbWasmAddress: ARB_WASM_ADDRESSES.arbitrumSepolia,
     maxContractsPerUser: DEFAULT_CONFIG.maxContractsPerUser,
     maxUserFunds: DEFAULT_CONFIG.maxUserFunds,
-    upgradeDelay: DEFAULT_CONFIG.upgradeDelay,
     verify: true,
   },
   localArb: {
@@ -40,7 +37,6 @@ export const deploymentConfigs: Record<string, DeploymentConfig> = {
     arbWasmAddress: ARB_WASM_ADDRESSES.localArb,
     maxContractsPerUser: DEFAULT_CONFIG.maxContractsPerUser,
     maxUserFunds: DEFAULT_CONFIG.maxUserFunds,
-    upgradeDelay: 0, // No delay for local testing
     verify: false,
   },
   superposition: {
@@ -49,7 +45,6 @@ export const deploymentConfigs: Record<string, DeploymentConfig> = {
     arbWasmAddress: ARB_WASM_ADDRESSES.superposition,
     maxContractsPerUser: DEFAULT_CONFIG.maxContractsPerUser,
     maxUserFunds: DEFAULT_CONFIG.maxUserFunds,
-    upgradeDelay: DEFAULT_CONFIG.upgradeDelay,
     verify: true,
   },
   hardhat: {
@@ -58,7 +53,6 @@ export const deploymentConfigs: Record<string, DeploymentConfig> = {
     arbWasmAddress: '0x1234567890123456789012345678901234567890',
     maxContractsPerUser: DEFAULT_CONFIG.maxContractsPerUser,
     maxUserFunds: DEFAULT_CONFIG.maxUserFunds,
-    upgradeDelay: 0,
     verify: false,
   },
 };
