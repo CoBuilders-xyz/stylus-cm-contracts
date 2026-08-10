@@ -15,6 +15,7 @@ describe('CacheManagerAutomation — Bids', function () {
   let cma: CacheManagerAutomation;
   let escrow: BiddingEscrow;
   let cacheManager: MockCacheManager;
+  let arbWasmCache: MockArbWasmCache;
   let owner: HardhatEthersSigner;
   let poisonedUser: HardhatEthersSigner;
   let validUser: HardhatEthersSigner;
@@ -40,7 +41,7 @@ describe('CacheManagerAutomation — Bids', function () {
     const MockArbWasmCacheFactory = await hre.ethers.getContractFactory(
       'MockArbWasmCache'
     );
-    const arbWasmCache =
+    arbWasmCache =
       (await MockArbWasmCacheFactory.deploy()) as MockArbWasmCache;
 
     const MockArbWasmFactory = await hre.ethers.getContractFactory(
@@ -146,9 +147,63 @@ describe('CacheManagerAutomation — Bids', function () {
       );
   });
 
-  it('preserves zero-value bids when the cache has free capacity', async function () {
+  it('skips an unregistered request without calling the cache precompile', async function () {
+    const unregisteredProgram = hre.ethers.getAddress(
+      '0x000000000000000000000000000000000000cafe'
+    );
+    await arbWasmCache.setRevertOnCheck(true);
+
+    const tx = await cma.connect(owner).placeBids([
+      {
+        user: validUser.address,
+        contractAddress: unregisteredProgram,
+      },
+    ]);
+
+    await expect(tx).to.not.emit(cma, 'BidPlaced');
+    expect(await cma.connect(validUser).getUserBalance()).to.equal(FUNDING);
+  });
+
+  it('skips disabled bidding without calling the cache precompile', async function () {
+    await cma
+      .connect(validUser)
+      .updateContract(VALID_PROGRAM, MAX_BID, false, false, 0);
+    await arbWasmCache.setRevertOnCheck(true);
+
+    const tx = await cma.connect(owner).placeBids([
+      { user: validUser.address, contractAddress: VALID_PROGRAM },
+    ]);
+
+    await expect(tx).to.not.emit(cma, 'BidPlaced');
+    expect(await cma.connect(validUser).getUserBalance()).to.equal(FUNDING);
+  });
+
+  it('consults the cache precompile for registered enabled bidding', async function () {
+    await arbWasmCache.setRevertOnCheck(true);
+
+    await expect(
+      cma.connect(owner).placeBids([
+        { user: validUser.address, contractAddress: VALID_PROGRAM },
+      ])
+    ).to.be.revertedWithCustomError(arbWasmCache, 'CacheCheckCalled');
+  });
+
+  it('skips a registered contract that is already cached', async function () {
+    // VALID_PROGRAM is a non-existent dummy address, so EXTCODEHASH returns 0.
+    await arbWasmCache.setCached(hre.ethers.ZeroHash, true);
+
+    const tx = await cma.connect(owner).placeBids([
+      { user: validUser.address, contractAddress: VALID_PROGRAM },
+    ]);
+
+    await expect(tx).to.not.emit(cma, 'BidPlaced');
+    expect(await cma.connect(validUser).getUserBalance()).to.equal(FUNDING);
+  });
+
+  it('preserves zero-value bids when the user has no balance', async function () {
     await cacheManager.setMinBid(0);
     await cacheManager.setCache(100, 0, 0);
+    await cma.connect(validUser).withdrawBalance();
 
     const tx = await cma.connect(owner).placeBids([
       { user: validUser.address, contractAddress: VALID_PROGRAM },
@@ -156,8 +211,8 @@ describe('CacheManagerAutomation — Bids', function () {
 
     await expect(tx)
       .to.emit(cma, 'BidPlaced')
-      .withArgs(validUser.address, VALID_PROGRAM, 0, MAX_BID, FUNDING);
-    expect(await cma.connect(validUser).getUserBalance()).to.equal(FUNDING);
+      .withArgs(validUser.address, VALID_PROGRAM, 0, MAX_BID, 0);
+    expect(await cma.connect(validUser).getUserBalance()).to.equal(0);
   });
 
   it('processes a duplicated user-contract pair only once', async function () {

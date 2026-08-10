@@ -645,14 +645,6 @@ contract CacheManagerAutomation is
         if (user == address(0) || contractAddress == address(0))
             return BidResult(false, ContractConfig(address(0), 0, false, false, 0), 0);
 
-        // Address is valid
-
-        // Is contract already cached?
-        if (arbWasmCache.codehashIsCached(contractAddress.codehash))
-            return BidResult(false, ContractConfig(address(0), 0, false, false, 0), 0);
-
-        // Address is valid & contract is not cached
-
         // Is automated bidding enabled and does the contract belong to user?
         ContractConfig[] storage contracts = userContracts[user];
         uint256 contractsLength = contracts.length;
@@ -661,6 +653,15 @@ contract CacheManagerAutomation is
                 // Is automated bidding enabled?
                 if (!contracts[j].biddingEnabled)
                     return BidResult(false, contracts[j], 0);
+
+                // Only registered contracts with bidding enabled need the
+                // comparatively expensive cache precompile check.
+                if (arbWasmCache.codehashIsCached(contractAddress.codehash))
+                    return BidResult(
+                        false,
+                        ContractConfig(address(0), 0, false, false, 0),
+                        0
+                    );
 
                 // Calculate bid amount
                 uint192 minBid;
