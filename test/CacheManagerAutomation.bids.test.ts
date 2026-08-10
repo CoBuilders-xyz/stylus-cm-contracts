@@ -126,6 +126,26 @@ describe('CacheManagerAutomation — Bids', function () {
       .withArgs(validUser.address, await cma.getAddress(), MIN_BID);
   });
 
+  it('finds a biddable contract at the end of a multi-contract list', async function () {
+    await cma
+      .connect(validUser)
+      .insertContract(POISONED_PROGRAM, MAX_BID, true, false, 0);
+
+    const tx = await cma.connect(owner).placeBids([
+      { user: validUser.address, contractAddress: POISONED_PROGRAM },
+    ]);
+
+    await expect(tx)
+      .to.emit(cma, 'BidPlaced')
+      .withArgs(
+        validUser.address,
+        POISONED_PROGRAM,
+        MIN_BID,
+        MAX_BID,
+        FUNDING - MIN_BID
+      );
+  });
+
   it('preserves zero-value bids when the cache has free capacity', async function () {
     await cacheManager.setMinBid(0);
     await cacheManager.setCache(100, 0, 0);

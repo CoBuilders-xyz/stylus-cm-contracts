@@ -317,6 +317,68 @@ describe('CacheManagerAutomation — Activations', function () {
         cma.connect(user).updateContract(PROGRAM, MAX_BID, true, true, aboveCap)
       ).to.be.revertedWithCustomError(cma, 'InvalidActivationCost');
     });
+
+    it('finds a duplicate at the end of a multi-contract list', async function () {
+      await insertWithActivation(PROGRAM, false, 0, 0);
+      await insertWithActivation(PROGRAM_2, false, 0, 0);
+
+      await expect(
+        insertWithActivation(PROGRAM_2, false, 0, 0)
+      ).to.be.revertedWithCustomError(cma, 'ContractAlreadyExists');
+      expect(await cma.connect(user).getUserContracts()).to.have.lengthOf(2);
+    });
+
+    it('updates a contract at the end of a multi-contract list', async function () {
+      await insertWithActivation(PROGRAM, false, 0, 0);
+      await insertWithActivation(PROGRAM_2, false, 0, 0);
+      const updatedBid = MAX_BID + 100n;
+
+      await cma
+        .connect(user)
+        .updateContract(PROGRAM_2, updatedBid, false, false, 0);
+
+      const contracts = await cma.connect(user).getUserContracts();
+      expect(contracts[0].contractAddress).to.equal(PROGRAM);
+      expect(contracts[0].maxBid).to.equal(MAX_BID);
+      expect(contracts[1].contractAddress).to.equal(PROGRAM_2);
+      expect(contracts[1].maxBid).to.equal(updatedBid);
+    });
+
+    it('removes a contract with swap-and-pop and unregisters the empty user', async function () {
+      await insertWithActivation(PROGRAM, false, 0, 0);
+      await insertWithActivation(PROGRAM_2, false, 0, 0);
+
+      await expect(cma.connect(user).removeContract(PROGRAM))
+        .to.emit(cma, 'ContractRemoved')
+        .withArgs(user.address, PROGRAM);
+
+      let contracts = await cma.connect(user).getUserContracts();
+      expect(contracts).to.have.lengthOf(1);
+      expect(contracts[0].contractAddress).to.equal(PROGRAM_2);
+      expect(await cma.getTotalUsersCount()).to.equal(1);
+
+      await cma.connect(user).removeContract(PROGRAM_2);
+      contracts = await cma.connect(user).getUserContracts();
+      expect(contracts).to.have.lengthOf(0);
+      expect(await cma.getTotalUsersCount()).to.equal(0);
+      await expect(
+        cma.connect(user).removeContract(PROGRAM_2)
+      ).to.be.revertedWithCustomError(cma, 'ContractNotFound');
+    });
+
+    it('removes the last entry while preserving the preceding contract', async function () {
+      await insertWithActivation(PROGRAM, false, 0, 0);
+      await insertWithActivation(PROGRAM_2, false, 0, 0);
+
+      await expect(cma.connect(user).removeContract(PROGRAM_2))
+        .to.emit(cma, 'ContractRemoved')
+        .withArgs(user.address, PROGRAM_2);
+
+      const contracts = await cma.connect(user).getUserContracts();
+      expect(contracts).to.have.lengthOf(1);
+      expect(contracts[0].contractAddress).to.equal(PROGRAM);
+      expect(await cma.getTotalUsersCount()).to.equal(1);
+    });
   });
 
   describe('owner configuration bounds', function () {
@@ -523,6 +585,34 @@ describe('CacheManagerAutomation — Activations', function () {
       expect(await cma.connect(user).getUserBalance()).to.equal(
         FUNDING - MAX_ACTIVATION_COST
       );
+    });
+
+    it('finds an activatable contract at the end of a multi-contract list', async function () {
+      await insertWithActivation(PROGRAM, false, 0, 0);
+      await insertWithActivation(
+        PROGRAM_2,
+        true,
+        MAX_ACTIVATION_COST,
+        FUNDING
+      );
+      await arbWasm.setDefaultTimeLeft(0);
+      await arbWasm.setVersion(7);
+
+      const tx = await cma.placeActivations([
+        { user: user.address, contractAddress: PROGRAM_2 },
+      ]);
+
+      await expect(tx)
+        .to.emit(cma, 'ActivationPerformed')
+        .withArgs(
+          user.address,
+          PROGRAM_2,
+          7,
+          0,
+          MAX_ACTIVATION_COST,
+          0,
+          FUNDING - MAX_ACTIVATION_COST
+        );
     });
 
     it('skips when programTimeLeft != 0 (not expired)', async function () {

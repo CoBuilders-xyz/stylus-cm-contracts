@@ -260,11 +260,12 @@ contract CacheManagerAutomation is
         if (_maxActivationCost > maxUserFunds)
             revert InvalidActivationCost();
         ContractConfig[] storage contracts = userContracts[msg.sender];
-        if (contracts.length >= maxContractsPerUser) revert TooManyContracts();
+        uint256 contractsLength = contracts.length;
+        if (contractsLength >= maxContractsPerUser) revert TooManyContracts();
 
         // Add new contract
         // Check if contract is already in the list
-        for (uint256 i = 0; i < contracts.length; i++) {
+        for (uint256 i = 0; i < contractsLength; i++) {
             if (contracts[i].contractAddress == _contract) {
                 revert ContractAlreadyExists();
             }
@@ -273,7 +274,7 @@ contract CacheManagerAutomation is
         if (msg.value > 0) _validateFundAmount(msg.sender, msg.value);
 
         // Add user to set if this is their first contract
-        if (contracts.length == 0) {
+        if (contractsLength == 0) {
             usersWithContracts.add(msg.sender);
         }
 
@@ -311,7 +312,8 @@ contract CacheManagerAutomation is
             revert InvalidActivationCost();
 
         ContractConfig[] storage contracts = userContracts[msg.sender];
-        for (uint256 i = 0; i < contracts.length; i++) {
+        uint256 contractsLength = contracts.length;
+        for (uint256 i = 0; i < contractsLength; i++) {
             if (contracts[i].contractAddress == _contract) {
                 contracts[i].maxBid = _maxBid;
                 contracts[i].biddingEnabled = _biddingEnabled;
@@ -336,15 +338,16 @@ contract CacheManagerAutomation is
 
     function removeContract(address _contract) external {
         ContractConfig[] storage contracts = userContracts[msg.sender];
-        if (contracts.length == 0) revert ContractNotFound();
+        uint256 contractsLength = contracts.length;
+        if (contractsLength == 0) revert ContractNotFound();
 
-        for (uint256 i = 0; i < contracts.length; i++) {
+        for (uint256 i = 0; i < contractsLength; i++) {
             if (contracts[i].contractAddress == _contract) {
-                contracts[i] = contracts[contracts.length - 1];
+                contracts[i] = contracts[contractsLength - 1];
                 contracts.pop();
 
                 // Remove user from set if they have no more contracts
-                if (contracts.length == 0) {
+                if (contractsLength == 1) {
                     usersWithContracts.remove(msg.sender);
                 }
 
@@ -652,7 +655,8 @@ contract CacheManagerAutomation is
 
         // Is automated bidding enabled and does the contract belong to user?
         ContractConfig[] storage contracts = userContracts[user];
-        for (uint256 j = 0; j < contracts.length; j++) {
+        uint256 contractsLength = contracts.length;
+        for (uint256 j = 0; j < contractsLength; j++) {
             if (contracts[j].contractAddress == contractAddress) {
                 // Is automated bidding enabled?
                 if (!contracts[j].biddingEnabled)
@@ -787,7 +791,8 @@ contract CacheManagerAutomation is
         ContractConfig memory cfg;
         bool found;
         ContractConfig[] storage contracts = userContracts[user];
-        for (uint256 j = 0; j < contracts.length; j++) {
+        uint256 contractsLength = contracts.length;
+        for (uint256 j = 0; j < contractsLength; j++) {
             if (contracts[j].contractAddress == contractAddress) {
                 cfg = contracts[j];
                 found = true;
