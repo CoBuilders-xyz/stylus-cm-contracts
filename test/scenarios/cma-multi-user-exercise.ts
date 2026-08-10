@@ -47,7 +47,7 @@ const PROGRAM_NOT_ACTIVATED_SELECTOR = '0x6f809c4e';
 
 const CMA_ABI = [
   'function insertContract(address,uint256,bool,bool,uint256) payable',
-  'function getUserContracts() view returns ((address contractAddress,uint256 maxBid,bool biddingEnabled,bool autoActivate,uint256 maxActivationCost)[])',
+  'function getUserContracts() view returns ((address contractAddress,bool biddingEnabled,bool autoActivate,uint256 maxBid,uint256 maxActivationCost)[])',
   'function getUserBalance() view returns (uint256)',
   'function placeBids((address user,address contractAddress)[])',
   'function placeActivations((address user,address contractAddress)[])',

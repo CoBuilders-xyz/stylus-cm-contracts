@@ -7,11 +7,11 @@ interface ICacheManagerAutomation {
     // Structs
     struct ContractConfig {
         address contractAddress;
-        uint256 maxBid;
         /// @notice Controls automated bidding only; activation is independently
         ///         controlled by autoActivate.
         bool biddingEnabled;
         bool autoActivate;
+        uint256 maxBid;
         uint256 maxActivationCost;
     }
     struct BidRequest {

@@ -141,6 +141,52 @@ describe('CacheManagerAutomation — Activations', function () {
   });
 
   describe('insertContract / updateContract', function () {
+    it('returns packed contract config fields in the expected ABI order', async function () {
+      const maxBid = 123_456n;
+      const maxActivationCost = 654_321n;
+
+      await cma
+        .connect(user)
+        .insertContract(PROGRAM, maxBid, false, true, maxActivationCost);
+
+      const [config] = await cma.connect(user).getUserContracts();
+      expect(config.contractAddress).to.equal(PROGRAM);
+      expect(config.biddingEnabled).to.equal(false);
+      expect(config.autoActivate).to.equal(true);
+      expect(config.maxBid).to.equal(maxBid);
+      expect(config.maxActivationCost).to.equal(maxActivationCost);
+      expect(config[0]).to.equal(PROGRAM);
+      expect(config[1]).to.equal(false);
+      expect(config[2]).to.equal(true);
+      expect(config[3]).to.equal(maxBid);
+      expect(config[4]).to.equal(maxActivationCost);
+
+      const publicConfig = await cma.userContracts(user.address, 0);
+      expect(publicConfig[0]).to.equal(PROGRAM);
+      expect(publicConfig[1]).to.equal(false);
+      expect(publicConfig[2]).to.equal(true);
+      expect(publicConfig[3]).to.equal(maxBid);
+      expect(publicConfig[4]).to.equal(maxActivationCost);
+
+      const [allUserData] = await cma.getContracts();
+      expect(allUserData.user).to.equal(user.address);
+      expect(allUserData.contracts[0][0]).to.equal(PROGRAM);
+      expect(allUserData.contracts[0][1]).to.equal(false);
+      expect(allUserData.contracts[0][2]).to.equal(true);
+      expect(allUserData.contracts[0][3]).to.equal(maxBid);
+      expect(allUserData.contracts[0][4]).to.equal(maxActivationCost);
+
+      const [paginatedUserData, hasMore] =
+        await cma.getContractsPaginated(0, 1);
+      expect(hasMore).to.equal(false);
+      expect(paginatedUserData[0].user).to.equal(user.address);
+      expect(paginatedUserData[0].contracts[0][0]).to.equal(PROGRAM);
+      expect(paginatedUserData[0].contracts[0][1]).to.equal(false);
+      expect(paginatedUserData[0].contracts[0][2]).to.equal(true);
+      expect(paginatedUserData[0].contracts[0][3]).to.equal(maxBid);
+      expect(paginatedUserData[0].contracts[0][4]).to.equal(maxActivationCost);
+    });
+
     it('uses Withdrawn only when funds are returned to the user', async function () {
       await cma.connect(user).fundBalance({ value: FUNDING });
 

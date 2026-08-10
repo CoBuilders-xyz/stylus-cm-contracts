@@ -20,12 +20,12 @@ cast send $CMA_ADDRESS "removeAllContracts()" --private-key $USER_PK --rpc-url $
 
 # struct ContractConfig {
 #     address contractAddress;
-#     uint256 maxBid;
 #     bool biddingEnabled;
 #     bool autoActivate;
+#     uint256 maxBid;
 #     uint256 maxActivationCost;
 # }
-cast call $CMA_ADDRESS "getUserContracts()(tuple(address,uint256,bool,bool,uint256)[])" --private-key $USER_PK --rpc-url $RPC
+cast call $CMA_ADDRESS "getUserContracts()(tuple(address,bool,bool,uint256,uint256)[])" --private-key $USER_PK --rpc-url $RPC
 
 #Is contract cached
 CONTRACT_ADDRESS=0x11B57FE348584f042E436c6Bf7c3c3deF171de49
@@ -63,7 +63,7 @@ CONTRACT=0xF5FfD11A55AFD39377411Ab9856474D2a7Cb697e
 cast send $CMA_ADDRESS "placeBids((address,address)[])" "[($USER_ADDRESS,$CONTRACT)]" --rpc-url $RPC --private-key $USER_PK
 
 # Raw contracts data:
-cast call $CMA_ADDRESS "getContracts()((address,(address,uint256,bool,bool,uint256)[])[])" --rpc-url $RPC --json | jq -r '.[0]'
+cast call $CMA_ADDRESS "getContracts()((address,(address,bool,bool,uint256,uint256)[])[])" --rpc-url $RPC --json | jq -r '.[0]'
 
 # Formatted for readability:
-cast call $CMA_ADDRESS "getContracts()((address,(address,uint256,bool,bool,uint256)[])[])" --rpc-url $RPC --json | jq -r '.[0]' | tr ',' '\n' | sed 's/\[(/[\n(/g; s/)\]/)\n]/g'
+cast call $CMA_ADDRESS "getContracts()((address,(address,bool,bool,uint256,uint256)[])[])" --rpc-url $RPC --json | jq -r '.[0]' | tr ',' '\n' | sed 's/\[(/[\n(/g; s/)\]/)\n]/g'

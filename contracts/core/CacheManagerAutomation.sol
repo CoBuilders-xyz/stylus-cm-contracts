@@ -260,9 +260,9 @@ contract CacheManagerAutomation is
         contracts.push(
             ContractConfig({
                 contractAddress: _contract,
-                maxBid: _maxBid,
                 biddingEnabled: _biddingEnabled,
                 autoActivate: _autoActivate,
+                maxBid: _maxBid,
                 maxActivationCost: _maxActivationCost
             })
         );
@@ -622,7 +622,18 @@ contract CacheManagerAutomation is
 
         // Are addresses valid?
         if (user == address(0) || contractAddress == address(0))
-            return BidResult(false, ContractConfig(address(0), 0, false, false, 0), 0);
+            return
+                BidResult(
+                    false,
+                    ContractConfig({
+                        contractAddress: address(0),
+                        biddingEnabled: false,
+                        autoActivate: false,
+                        maxBid: 0,
+                        maxActivationCost: 0
+                    }),
+                    0
+                );
 
         // Is automated bidding enabled and does the contract belong to user?
         ContractConfig[] storage contracts = userContracts[user];
@@ -638,7 +649,13 @@ contract CacheManagerAutomation is
                 if (arbWasmCache.codehashIsCached(contractAddress.codehash))
                     return BidResult(
                         false,
-                        ContractConfig(address(0), 0, false, false, 0),
+                        ContractConfig({
+                            contractAddress: address(0),
+                            biddingEnabled: false,
+                            autoActivate: false,
+                            maxBid: 0,
+                            maxActivationCost: 0
+                        }),
                         0
                     );
 
@@ -671,7 +688,19 @@ contract CacheManagerAutomation is
                 return BidResult(true, contracts[j], calculatedBid);
             }
         }
-        return BidResult(false, ContractConfig(address(0), 0, false, false, 0), 0); // Contract not found
+        // Contract not found.
+        return
+            BidResult(
+                false,
+                ContractConfig({
+                    contractAddress: address(0),
+                    biddingEnabled: false,
+                    autoActivate: false,
+                    maxBid: 0,
+                    maxActivationCost: 0
+                }),
+                0
+            );
     }
 
     function _placeBid(
@@ -752,13 +781,13 @@ contract CacheManagerAutomation is
     ) internal view returns (ActivationResult memory) {
         address user = request.user;
         address contractAddress = request.contractAddress;
-        ContractConfig memory empty = ContractConfig(
-            address(0),
-            0,
-            false,
-            false,
-            0
-        );
+        ContractConfig memory empty = ContractConfig({
+            contractAddress: address(0),
+            biddingEnabled: false,
+            autoActivate: false,
+            maxBid: 0,
+            maxActivationCost: 0
+        });
 
         // Defensive: skip invalid addresses.
         if (user == address(0) || contractAddress == address(0))
