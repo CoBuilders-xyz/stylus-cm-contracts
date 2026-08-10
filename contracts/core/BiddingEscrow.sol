@@ -87,7 +87,7 @@ contract BiddingEscrow is Ownable {
 
         _deposits[depositor] = balance - amount;
 
-        address recipient = owner();
+        address recipient = msg.sender;
         payable(recipient).sendValue(amount);
 
         emit WithdrawnForAutomation(depositor, recipient, amount);
