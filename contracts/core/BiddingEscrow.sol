@@ -23,7 +23,7 @@ contract BiddingEscrow is Ownable {
         uint256 weiAmount
     );
 
-    mapping(address => uint256) private _deposits;
+    mapping(address account => uint256 balance) private _deposits;
 
     function depositsOf(address payee) public view returns (uint256) {
         return _deposits[payee];

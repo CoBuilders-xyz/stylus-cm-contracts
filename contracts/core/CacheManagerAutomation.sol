@@ -55,7 +55,7 @@ contract CacheManagerAutomation is
     ICacheManager public immutable cacheManager;
     IArbWasmCache public immutable arbWasmCache;
     IArbWasm public immutable arbWasm;
-    mapping(address => ContractConfig[]) public userContracts;
+    mapping(address user => ContractConfig[] contracts) public userContracts;
     EnumerableSet.AddressSet private usersWithContracts;
 
     // ------------------------------------------------------------------------
