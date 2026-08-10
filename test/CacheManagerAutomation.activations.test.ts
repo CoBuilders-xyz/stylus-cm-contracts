@@ -382,13 +382,58 @@ describe('CacheManagerAutomation — Activations', function () {
   });
 
   describe('owner configuration bounds', function () {
+    it('accepts the inclusive lower boundary for positive owner settings', async function () {
+      await cma.setMaxContractsPerUser(1);
+      await cma.setMinMaxBidAmount(1);
+      await cma.setMaxBidsPerIteration(1);
+      await cma.setMaxUsersPerPage(1);
+      await cma.setHorizonSeconds(1);
+      await cma.setBidIncrement(1);
+      await cma.setMaxActivationsPerIteration(1);
+
+      expect(await cma.maxContractsPerUser()).to.equal(1n);
+      expect(await cma.minMaxBidAmount()).to.equal(1n);
+      expect(await cma.maxBidsPerIteration()).to.equal(1n);
+      expect(await cma.maxUsersPerPage()).to.equal(1n);
+      expect(await cma.horizonSeconds()).to.equal(1n);
+      expect(await cma.bidIncrement()).to.equal(1n);
+      expect(await cma.maxActivationsPerIteration()).to.equal(1n);
+    });
+
+    it('requires positive contract and activation iteration limits', async function () {
+      await expect(cma.setMaxContractsPerUser(0)).to.be.revertedWithCustomError(
+        cma,
+        'InvalidMaxContractsPerUser'
+      );
+      await expect(
+        cma.setMaxActivationsPerIteration(0)
+      ).to.be.revertedWithCustomError(
+        cma,
+        'InvalidMaxActivationsPerIteration'
+      );
+      expect(await cma.maxContractsPerUser()).to.equal(50n);
+      expect(await cma.maxActivationsPerIteration()).to.equal(5n);
+    });
+
+    it('requires a positive minimum maximum bid', async function () {
+      await expect(cma.setMinMaxBidAmount(0)).to.be.revertedWithCustomError(
+        cma,
+        'InvalidMinMaxBidAmount'
+      );
+      expect(await cma.minMaxBidAmount()).to.equal(1n);
+    });
+
     it('keeps minFundAmount at or below maxUserFunds', async function () {
       const maxUserFunds = 1_000n;
       await cma.setMaxUserFunds(maxUserFunds);
 
+      await expect(cma.setMinFundAmount(0)).to.be.revertedWithCustomError(
+        cma,
+        'InvalidMinFundAmount'
+      );
       await expect(
         cma.setMinFundAmount(maxUserFunds + 1n)
-      ).to.be.revertedWith('Min fund amount must be within user funds limit');
+      ).to.be.revertedWithCustomError(cma, 'InvalidMinFundAmount');
       expect(await cma.minFundAmount()).to.equal(1n);
 
       await cma.setMinFundAmount(maxUserFunds);
@@ -401,9 +446,7 @@ describe('CacheManagerAutomation — Activations', function () {
 
       await expect(
         cma.setMaxUserFunds(minFundAmount - 1n)
-      ).to.be.revertedWith(
-        'Max user funds must cover minimum fund amount'
-      );
+      ).to.be.revertedWithCustomError(cma, 'InvalidMaxUserFunds');
       expect(await cma.maxUserFunds()).to.equal(hre.ethers.parseEther('1'));
 
       await cma.setMaxUserFunds(minFundAmount);
@@ -411,11 +454,13 @@ describe('CacheManagerAutomation — Activations', function () {
     });
 
     it('restricts cacheThreshold to the inclusive 1-100 range', async function () {
-      await expect(cma.setCacheThreshold(0)).to.be.revertedWith(
-        'Cache threshold must be between 1 and 100'
+      await expect(cma.setCacheThreshold(0)).to.be.revertedWithCustomError(
+        cma,
+        'InvalidCacheThreshold'
       );
-      await expect(cma.setCacheThreshold(101)).to.be.revertedWith(
-        'Cache threshold must be between 1 and 100'
+      await expect(cma.setCacheThreshold(101)).to.be.revertedWithCustomError(
+        cma,
+        'InvalidCacheThreshold'
       );
       expect(await cma.cacheThreshold()).to.equal(98n);
 
@@ -425,11 +470,13 @@ describe('CacheManagerAutomation — Activations', function () {
     });
 
     it('caps maxUsersPerPage at 100', async function () {
-      await expect(cma.setMaxUsersPerPage(0)).to.be.revertedWith(
-        'Max users per page out of range'
+      await expect(cma.setMaxUsersPerPage(0)).to.be.revertedWithCustomError(
+        cma,
+        'InvalidMaxUsersPerPage'
       );
-      await expect(cma.setMaxUsersPerPage(101)).to.be.revertedWith(
-        'Max users per page out of range'
+      await expect(cma.setMaxUsersPerPage(101)).to.be.revertedWithCustomError(
+        cma,
+        'InvalidMaxUsersPerPage'
       );
       expect(await cma.maxUsersPerPage()).to.equal(100n);
 
@@ -438,12 +485,12 @@ describe('CacheManagerAutomation — Activations', function () {
     });
 
     it('caps maxBidsPerIteration at the tested 50-request limit', async function () {
-      await expect(cma.setMaxBidsPerIteration(0)).to.be.revertedWith(
-        'Max bids per iteration out of range'
-      );
-      await expect(cma.setMaxBidsPerIteration(51)).to.be.revertedWith(
-        'Max bids per iteration out of range'
-      );
+      await expect(
+        cma.setMaxBidsPerIteration(0)
+      ).to.be.revertedWithCustomError(cma, 'InvalidMaxBidsPerIteration');
+      await expect(
+        cma.setMaxBidsPerIteration(51)
+      ).to.be.revertedWithCustomError(cma, 'InvalidMaxBidsPerIteration');
       expect(await cma.maxBidsPerIteration()).to.equal(50n);
 
       await cma.setMaxBidsPerIteration(50);
@@ -452,12 +499,13 @@ describe('CacheManagerAutomation — Activations', function () {
 
     it('caps horizonSeconds at 365 days', async function () {
       const maxHorizon = 365n * 24n * 60n * 60n;
-      await expect(cma.setHorizonSeconds(0)).to.be.revertedWith(
-        'Horizon seconds out of range'
+      await expect(cma.setHorizonSeconds(0)).to.be.revertedWithCustomError(
+        cma,
+        'InvalidHorizonSeconds'
       );
       await expect(
         cma.setHorizonSeconds(maxHorizon + 1n)
-      ).to.be.revertedWith('Horizon seconds out of range');
+      ).to.be.revertedWithCustomError(cma, 'InvalidHorizonSeconds');
       expect(await cma.horizonSeconds()).to.equal(30n * 24n * 60n * 60n);
 
       await cma.setHorizonSeconds(maxHorizon);
@@ -466,12 +514,13 @@ describe('CacheManagerAutomation — Activations', function () {
 
     it('caps bidIncrement at 1 ether', async function () {
       const maxIncrement = hre.ethers.parseEther('1');
-      await expect(cma.setBidIncrement(0)).to.be.revertedWith(
-        'Bid increment out of range'
+      await expect(cma.setBidIncrement(0)).to.be.revertedWithCustomError(
+        cma,
+        'InvalidBidIncrement'
       );
-      await expect(cma.setBidIncrement(maxIncrement + 1n)).to.be.revertedWith(
-        'Bid increment out of range'
-      );
+      await expect(
+        cma.setBidIncrement(maxIncrement + 1n)
+      ).to.be.revertedWithCustomError(cma, 'InvalidBidIncrement');
       expect(await cma.bidIncrement()).to.equal(1n);
 
       await cma.setBidIncrement(maxIncrement);
@@ -480,6 +529,25 @@ describe('CacheManagerAutomation — Activations', function () {
   });
 
   describe('getContractsPaginated', function () {
+    it('returns a user by index and rejects out-of-bounds indexes', async function () {
+      await cma
+        .connect(user)
+        .insertContract(PROGRAM, MAX_BID, true, false, 0);
+
+      expect(await cma.getUserAtIndex(0)).to.equal(user.address);
+      await expect(cma.getUserAtIndex(1)).to.be.revertedWithCustomError(
+        cma,
+        'IndexOutOfBounds'
+      );
+    });
+
+    it('rejects index zero when no users are registered', async function () {
+      await expect(cma.getUserAtIndex(0)).to.be.revertedWithCustomError(
+        cma,
+        'IndexOutOfBounds'
+      );
+    });
+
     it('returns an empty page when the offset is out of range', async function () {
       const [userData, hasMore] = await cma.getContractsPaginated(0, 10);
 
@@ -514,6 +582,37 @@ describe('CacheManagerAutomation — Activations', function () {
       expect(lastPage[0].user).to.equal(fourthUser.address);
       expect(lastPage[0].contracts[0].contractAddress).to.equal(PROGRAM);
       expect(lastHasMore).to.equal(false);
+    });
+  });
+
+  describe('BiddingEscrow errors', function () {
+    it('rejects an automation withdrawal above the account balance', async function () {
+      const EscrowFactory = await hre.ethers.getContractFactory(
+        'BiddingEscrow'
+      );
+      const standaloneEscrow = (await EscrowFactory.deploy()) as BiddingEscrow;
+      await standaloneEscrow.deposit(user.address, { value: 100n });
+
+      await expect(
+        standaloneEscrow.withdrawForAutomation(user.address, 101n)
+      ).to.be.revertedWithCustomError(
+        standaloneEscrow,
+        'AmountExceedsBalance'
+      );
+      expect(await standaloneEscrow.depositsOf(user.address)).to.equal(100n);
+    });
+
+    it('allows an automation withdrawal equal to the account balance', async function () {
+      const EscrowFactory = await hre.ethers.getContractFactory(
+        'BiddingEscrow'
+      );
+      const standaloneEscrow = (await EscrowFactory.deploy()) as BiddingEscrow;
+      await standaloneEscrow.deposit(user.address, { value: 100n });
+
+      await expect(standaloneEscrow.withdrawForAutomation(user.address, 100n))
+        .to.emit(standaloneEscrow, 'WithdrawnForAutomation')
+        .withArgs(user.address, owner.address, 100n);
+      expect(await standaloneEscrow.depositsOf(user.address)).to.equal(0);
     });
   });
 

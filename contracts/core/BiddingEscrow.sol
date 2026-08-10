@@ -15,6 +15,8 @@ import {Address} from '@openzeppelin/contracts/utils/Address.sol';
 contract BiddingEscrow is Ownable {
     using Address for address payable;
 
+    error AmountExceedsBalance();
+
     event Deposited(address indexed payee, uint256 weiAmount);
     event Withdrawn(address indexed payee, uint256 weiAmount);
     event WithdrawnForAutomation(
@@ -82,7 +84,7 @@ contract BiddingEscrow is Ownable {
         uint256 balance = _deposits[depositor];
 
         if (amount > balance) {
-            revert('Amount exceeds balance');
+            revert AmountExceedsBalance();
         }
 
         _deposits[depositor] = balance - amount;

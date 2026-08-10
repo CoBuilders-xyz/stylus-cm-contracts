@@ -176,6 +176,17 @@ interface ICacheManagerAutomation {
     error InvalidActivationCost();
     error UnauthorizedSender();
     error OwnershipRenunciationDisabled();
+    error IndexOutOfBounds();
+    error InvalidMaxContractsPerUser();
+    error InvalidMinMaxBidAmount();
+    error InvalidMinFundAmount();
+    error InvalidMaxUserFunds();
+    error InvalidMaxBidsPerIteration();
+    error InvalidMaxUsersPerPage();
+    error InvalidCacheThreshold();
+    error InvalidHorizonSeconds();
+    error InvalidBidIncrement();
+    error InvalidMaxActivationsPerIteration();
 
     // Functions
     function insertContract(

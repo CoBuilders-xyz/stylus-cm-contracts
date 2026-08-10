@@ -110,10 +110,7 @@ contract CacheManagerAutomation is
     function setMaxContractsPerUser(
         uint256 _maxContractsPerUser
     ) external onlyOwner {
-        require(
-            _maxContractsPerUser > 0,
-            'Max contracts per user must be greater than 0'
-        );
+        if (_maxContractsPerUser == 0) revert InvalidMaxContractsPerUser();
         uint256 oldValue = maxContractsPerUser;
         maxContractsPerUser = _maxContractsPerUser;
         emit MaxContractsPerUserUpdated(oldValue, _maxContractsPerUser);
@@ -122,10 +119,7 @@ contract CacheManagerAutomation is
     /// @notice Set minimum maximum bid amount
     /// @param _minMaxBidAmount New minimum maximum bid amount
     function setMinMaxBidAmount(uint256 _minMaxBidAmount) external onlyOwner {
-        require(
-            _minMaxBidAmount > 0,
-            'Min max bid amount must be greater than 0'
-        );
+        if (_minMaxBidAmount == 0) revert InvalidMinMaxBidAmount();
         uint256 oldValue = minMaxBidAmount;
         minMaxBidAmount = _minMaxBidAmount;
         emit MinMaxBidAmountUpdated(oldValue, _minMaxBidAmount);
@@ -134,10 +128,8 @@ contract CacheManagerAutomation is
     /// @notice Set minimum fund amount
     /// @param _minFundAmount New minimum fund amount
     function setMinFundAmount(uint256 _minFundAmount) external onlyOwner {
-        require(
-            _minFundAmount > 0 && _minFundAmount <= maxUserFunds,
-            'Min fund amount must be within user funds limit'
-        );
+        if (_minFundAmount == 0 || _minFundAmount > maxUserFunds)
+            revert InvalidMinFundAmount();
         uint256 oldValue = minFundAmount;
         minFundAmount = _minFundAmount;
         emit MinFundAmountUpdated(oldValue, _minFundAmount);
@@ -148,10 +140,7 @@ contract CacheManagerAutomation is
     /// @dev Applied prospectively; existing balances above a lowered limit can
     ///      still be withdrawn but cannot be funded further.
     function setMaxUserFunds(uint256 _maxUserFunds) external onlyOwner {
-        require(
-            _maxUserFunds >= minFundAmount,
-            'Max user funds must cover minimum fund amount'
-        );
+        if (_maxUserFunds < minFundAmount) revert InvalidMaxUserFunds();
         uint256 oldValue = maxUserFunds;
         maxUserFunds = _maxUserFunds;
         emit MaxUserFundsUpdated(oldValue, _maxUserFunds);
@@ -162,11 +151,10 @@ contract CacheManagerAutomation is
     function setMaxBidsPerIteration(
         uint256 _maxBidsPerIteration
     ) external onlyOwner {
-        require(
-            _maxBidsPerIteration > 0 &&
-                _maxBidsPerIteration <= MAX_BIDS_PER_ITERATION_LIMIT,
-            'Max bids per iteration out of range'
-        );
+        if (
+            _maxBidsPerIteration == 0 ||
+            _maxBidsPerIteration > MAX_BIDS_PER_ITERATION_LIMIT
+        ) revert InvalidMaxBidsPerIteration();
         uint256 oldValue = maxBidsPerIteration;
         maxBidsPerIteration = _maxBidsPerIteration;
         emit MaxBidsPerIterationUpdated(oldValue, _maxBidsPerIteration);
@@ -175,11 +163,10 @@ contract CacheManagerAutomation is
     /// @notice Set maximum users per page
     /// @param _maxUsersPerPage New maximum users per page
     function setMaxUsersPerPage(uint256 _maxUsersPerPage) external onlyOwner {
-        require(
-            _maxUsersPerPage > 0 &&
-                _maxUsersPerPage <= MAX_USERS_PER_PAGE_LIMIT,
-            'Max users per page out of range'
-        );
+        if (
+            _maxUsersPerPage == 0 ||
+            _maxUsersPerPage > MAX_USERS_PER_PAGE_LIMIT
+        ) revert InvalidMaxUsersPerPage();
         uint256 oldValue = maxUsersPerPage;
         maxUsersPerPage = _maxUsersPerPage;
         emit MaxUsersPerPageUpdated(oldValue, _maxUsersPerPage);
@@ -188,10 +175,8 @@ contract CacheManagerAutomation is
     /// @notice Set cache threshold percentage
     /// @param _cacheThreshold New cache threshold (1-100)
     function setCacheThreshold(uint256 _cacheThreshold) external onlyOwner {
-        require(
-            _cacheThreshold > 0 && _cacheThreshold <= 100,
-            'Cache threshold must be between 1 and 100'
-        );
+        if (_cacheThreshold == 0 || _cacheThreshold > 100)
+            revert InvalidCacheThreshold();
         uint256 oldValue = cacheThreshold;
         cacheThreshold = _cacheThreshold;
         emit CacheThresholdUpdated(oldValue, _cacheThreshold);
@@ -200,11 +185,9 @@ contract CacheManagerAutomation is
     /// @notice Set horizon seconds for bid decay calculation
     /// @param _horizonSeconds New horizon seconds
     function setHorizonSeconds(uint256 _horizonSeconds) external onlyOwner {
-        require(
-            _horizonSeconds > 0 &&
-                _horizonSeconds <= MAX_HORIZON_SECONDS,
-            'Horizon seconds out of range'
-        );
+        if (
+            _horizonSeconds == 0 || _horizonSeconds > MAX_HORIZON_SECONDS
+        ) revert InvalidHorizonSeconds();
         uint256 oldValue = horizonSeconds;
         horizonSeconds = _horizonSeconds;
         emit HorizonSecondsUpdated(oldValue, _horizonSeconds);
@@ -213,10 +196,8 @@ contract CacheManagerAutomation is
     /// @notice Set bid increment for uniqueness
     /// @param _bidIncrement New bid increment
     function setBidIncrement(uint192 _bidIncrement) external onlyOwner {
-        require(
-            _bidIncrement > 0 && _bidIncrement <= MAX_BID_INCREMENT,
-            'Bid increment out of range'
-        );
+        if (_bidIncrement == 0 || _bidIncrement > MAX_BID_INCREMENT)
+            revert InvalidBidIncrement();
         uint192 oldValue = bidIncrement;
         bidIncrement = _bidIncrement;
         emit BidIncrementUpdated(oldValue, _bidIncrement);
@@ -227,10 +208,8 @@ contract CacheManagerAutomation is
     function setMaxActivationsPerIteration(
         uint256 _maxActivationsPerIteration
     ) external onlyOwner {
-        require(
-            _maxActivationsPerIteration > 0,
-            'Max activations per iteration must be greater than 0'
-        );
+        if (_maxActivationsPerIteration == 0)
+            revert InvalidMaxActivationsPerIteration();
         uint256 oldValue = maxActivationsPerIteration;
         maxActivationsPerIteration = _maxActivationsPerIteration;
         emit MaxActivationsPerIterationUpdated(
@@ -560,7 +539,7 @@ contract CacheManagerAutomation is
     /// @param index Index of the user
     /// @return User address at the given index
     function getUserAtIndex(uint256 index) external view returns (address) {
-        require(index < usersWithContracts.length(), 'Index out of bounds');
+        if (index >= usersWithContracts.length()) revert IndexOutOfBounds();
         return usersWithContracts.at(index);
     }
 
