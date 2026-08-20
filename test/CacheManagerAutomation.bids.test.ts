@@ -368,7 +368,8 @@ describe('CacheManagerAutomation — Bids', function () {
 
     // Four requests allocate an eight-slot table. Bucket 7 forces probes to
     // wrap through slots 0 and 1 for the second and third unique programs.
-    for (let candidate = 1; collidingPrograms.length < 3; candidate++) {
+    // Stay above the precompile range so every candidate is an empty account.
+    for (let candidate = 0x10000; collidingPrograms.length < 3; candidate++) {
       const program = hre.ethers.getAddress(
         `0x${candidate.toString(16).padStart(40, '0')}`
       );
@@ -412,7 +413,6 @@ describe('CacheManagerAutomation — Bids', function () {
 
   it('saturates an oversized calculated bid instead of truncating it', async function () {
     const maxUint192 = (1n << 192n) - 1n;
-    await cacheManager.setMinBid(maxUint192);
     const HarnessFactory = await hre.ethers.getContractFactory(
       'CacheManagerAutomationHarness'
     );

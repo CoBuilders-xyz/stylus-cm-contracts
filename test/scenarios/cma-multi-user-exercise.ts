@@ -153,7 +153,18 @@ function saveScenario(filePath: string, scenario: ScenarioState) {
 }
 
 function loadScenario(filePath: string): ScenarioState {
-  return JSON.parse(fs.readFileSync(filePath, 'utf8')) as ScenarioState;
+  const scenario = JSON.parse(fs.readFileSync(filePath, 'utf8')) as ScenarioState;
+
+  if (
+    !Array.isArray(scenario.contracts) ||
+    scenario.contracts.some((item) => typeof item.biddingEnabled !== 'boolean')
+  ) {
+    throw new Error(
+      'Scenario file uses an outdated contract format. Re-create it with setup --force.'
+    );
+  }
+
+  return scenario;
 }
 
 function loadEnv(envFile: string) {
