@@ -143,6 +143,11 @@ interface ICacheManagerAutomation {
         address indexed contractAddress,
         bool autoActivate
     );
+    event ContractBiddingEnabledUpdated(
+        address indexed user,
+        address indexed contractAddress,
+        bool biddingEnabled
+    );
     event ContractMaxActivationCostUpdated(
         address indexed user,
         address indexed contractAddress,

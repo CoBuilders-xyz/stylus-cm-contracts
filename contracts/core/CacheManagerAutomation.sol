@@ -268,6 +268,11 @@ contract CacheManagerAutomation is
         );
         _updateUserBalance(msg.sender, msg.value);
         emit ContractAdded(msg.sender, _contract, _maxBid);
+        emit ContractBiddingEnabledUpdated(
+            msg.sender,
+            _contract,
+            _biddingEnabled
+        );
         emit ContractAutoActivateUpdated(msg.sender, _contract, _autoActivate);
         emit ContractMaxActivationCostUpdated(
             msg.sender,
@@ -299,6 +304,11 @@ contract CacheManagerAutomation is
                 contracts[i].autoActivate = _autoActivate;
                 contracts[i].maxActivationCost = _maxActivationCost;
                 emit ContractUpdated(msg.sender, _contract, _maxBid);
+                emit ContractBiddingEnabledUpdated(
+                    msg.sender,
+                    _contract,
+                    _biddingEnabled
+                );
                 emit ContractAutoActivateUpdated(
                     msg.sender,
                     _contract,

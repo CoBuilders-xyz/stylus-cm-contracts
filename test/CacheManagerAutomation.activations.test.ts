@@ -141,6 +141,35 @@ describe('CacheManagerAutomation — Activations', function () {
   });
 
   describe('insertContract / updateContract', function () {
+    it('emits the stored bidding status on insert and update', async function () {
+      await expect(
+        cma
+          .connect(user)
+          .insertContract(PROGRAM, MAX_BID, true, false, 0)
+      )
+        .to.emit(cma, 'ContractBiddingEnabledUpdated')
+        .withArgs(user.address, PROGRAM, true);
+
+      await expect(
+        cma
+          .connect(user)
+          .insertContract(PROGRAM_2, MAX_BID, false, false, 0)
+      )
+        .to.emit(cma, 'ContractBiddingEnabledUpdated')
+        .withArgs(user.address, PROGRAM_2, false);
+
+      await expect(
+        cma
+          .connect(user)
+          .updateContract(PROGRAM, MAX_BID, false, false, 0)
+      )
+        .to.emit(cma, 'ContractBiddingEnabledUpdated')
+        .withArgs(user.address, PROGRAM, false);
+
+      const [updatedConfig] = await cma.connect(user).getUserContracts();
+      expect(updatedConfig.biddingEnabled).to.equal(false);
+    });
+
     it('returns packed contract config fields in the expected ABI order', async function () {
       const maxBid = 123_456n;
       const maxActivationCost = 654_321n;
