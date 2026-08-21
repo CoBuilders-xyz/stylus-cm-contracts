@@ -476,11 +476,13 @@ contract CacheManagerAutomation is
     }
 
     // May revert if too many. Better use paginated version.
-    function getContracts() external view returns (UserContractsData[] memory) {
+    function getContracts()
+        external
+        view
+        returns (UserContractsData[] memory allUserContracts)
+    {
         uint256 userCount = usersWithContracts.length();
-        UserContractsData[] memory allUserContracts = new UserContractsData[](
-            userCount
-        );
+        allUserContracts = new UserContractsData[](userCount);
 
         for (uint256 i = 0; i < userCount; i++) {
             address user = usersWithContracts.at(i);
@@ -489,8 +491,6 @@ contract CacheManagerAutomation is
                 contracts: userContracts[user]
             });
         }
-
-        return allUserContracts;
     }
 
     /// @notice Get contracts with pagination support
