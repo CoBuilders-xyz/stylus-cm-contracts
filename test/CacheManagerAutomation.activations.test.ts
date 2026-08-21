@@ -862,6 +862,58 @@ describe('CacheManagerAutomation — Activations', function () {
       ]);
       await expect(tx).to.not.emit(cma, 'ActivationPerformed');
     });
+
+    it('applies a lowered maxUserFunds prospectively to existing activation configs', async function () {
+      const activationCost = hre.ethers.parseEther('0.04');
+      const initialFunding = hre.ethers.parseEther('0.05');
+      const loweredFundsLimit = hre.ethers.parseEther('0.01');
+
+      await insertWithActivation(
+        PROGRAM,
+        true,
+        activationCost,
+        initialFunding
+      );
+      await cma.setMaxUserFunds(loweredFundsLimit);
+      await arbWasm.setDefaultTimeLeft(0);
+      await arbWasm.setVersion(7);
+
+      // Lowering the limit does not rewrite the existing configuration or
+      // block spending funds that were already in escrow.
+      const firstActivation = await cma.placeActivations([
+        { user: user.address, contractAddress: PROGRAM },
+      ]);
+      await expect(firstActivation).to.emit(cma, 'ActivationPerformed');
+      expect(await cma.connect(user).getUserBalance()).to.equal(
+        loweredFundsLimit
+      );
+
+      // Once the remaining balance is below the configured activation cost,
+      // activation is skipped and the lowered limit prevents topping it up.
+      const skippedActivation = await cma.placeActivations([
+        { user: user.address, contractAddress: PROGRAM },
+      ]);
+      await expect(skippedActivation).to.not.emit(cma, 'ActivationPerformed');
+      await expect(
+        cma.connect(user).fundBalance({ value: 1n })
+      ).to.be.revertedWithCustomError(cma, 'ExceedsMaxUserFunds');
+
+      // The user can recover by lowering the existing activation cap.
+      await cma
+        .connect(user)
+        .updateContract(
+          PROGRAM,
+          MAX_BID,
+          true,
+          true,
+          loweredFundsLimit
+        );
+      const recoveredActivation = await cma.placeActivations([
+        { user: user.address, contractAddress: PROGRAM },
+      ]);
+      await expect(recoveredActivation).to.emit(cma, 'ActivationPerformed');
+      expect(await cma.connect(user).getUserBalance()).to.equal(0n);
+    });
   });
 
   describe('placeActivations — execution', function () {
