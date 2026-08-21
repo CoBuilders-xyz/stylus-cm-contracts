@@ -153,18 +153,28 @@ function saveScenario(filePath: string, scenario: ScenarioState) {
 }
 
 function loadScenario(filePath: string): ScenarioState {
-  const scenario = JSON.parse(fs.readFileSync(filePath, 'utf8')) as ScenarioState;
+  const scenario = JSON.parse(fs.readFileSync(filePath, 'utf8')) as unknown;
+  const contracts =
+    scenario && typeof scenario === 'object'
+      ? (scenario as { contracts?: unknown }).contracts
+      : undefined;
 
   if (
-    !Array.isArray(scenario.contracts) ||
-    scenario.contracts.some((item) => typeof item.biddingEnabled !== 'boolean')
+    !Array.isArray(contracts) ||
+    contracts.some(
+      (item) =>
+        !item ||
+        typeof item !== 'object' ||
+        typeof (item as { biddingEnabled?: unknown }).biddingEnabled !==
+          'boolean'
+    )
   ) {
     throw new Error(
       'Scenario file uses an outdated contract format. Re-create it with setup --force.'
     );
   }
 
-  return scenario;
+  return scenario as ScenarioState;
 }
 
 function loadEnv(envFile: string) {
