@@ -29,9 +29,30 @@ describe('CacheManagerAutomation — Bids', function () {
   const MAX_BID = 1_000n;
   const FUNDING = 1_000n;
   const MIN_BID = 100n;
+  const ARB_SYS_ADDRESS = '0x0000000000000000000000000000000000000064';
+
+  async function deployProgramsWithSharedCodehash(): Promise<[string, string]> {
+    const ProgramFactory = await hre.ethers.getContractFactory('MockArbWasm');
+    const first = (await ProgramFactory.deploy()) as MockArbWasm;
+    const second = (await ProgramFactory.deploy()) as MockArbWasm;
+    const firstAddress = await first.getAddress();
+    const secondAddress = await second.getAddress();
+
+    expect(await hre.ethers.provider.getCode(firstAddress)).to.equal(
+      await hre.ethers.provider.getCode(secondAddress)
+    );
+    return [firstAddress, secondAddress];
+  }
 
   beforeEach(async function () {
     [owner, poisonedUser, validUser] = await hre.ethers.getSigners();
+
+    const MockArbSysFactory = await hre.ethers.getContractFactory('MockArbSys');
+    const mockArbSys = await MockArbSysFactory.deploy();
+    await hre.network.provider.send('hardhat_setCode', [
+      ARB_SYS_ADDRESS,
+      await hre.ethers.provider.getCode(await mockArbSys.getAddress()),
+    ]);
 
     const MockCacheManagerFactory = await hre.ethers.getContractFactory(
       'MockCacheManager'
@@ -216,14 +237,18 @@ describe('CacheManagerAutomation — Bids', function () {
   });
 
   it('processes a duplicated user-contract pair only once', async function () {
+    const [program] = await deployProgramsWithSharedCodehash();
+    await cma
+      .connect(poisonedUser)
+      .insertContract(program, MAX_BID, true, false, 0);
     const tx = await cma.connect(owner).placeBids([
       {
         user: poisonedUser.address,
-        contractAddress: POISONED_PROGRAM,
+        contractAddress: program,
       },
       {
         user: poisonedUser.address,
-        contractAddress: POISONED_PROGRAM,
+        contractAddress: program,
       },
     ]);
 
@@ -243,15 +268,19 @@ describe('CacheManagerAutomation — Bids', function () {
   });
 
   it('skips an interleaved duplicate without skipping unique requests', async function () {
+    const [program] = await deployProgramsWithSharedCodehash();
+    await cma
+      .connect(poisonedUser)
+      .insertContract(program, MAX_BID, true, false, 0);
     const tx = await cma.connect(owner).placeBids([
       {
         user: poisonedUser.address,
-        contractAddress: POISONED_PROGRAM,
+        contractAddress: program,
       },
       { user: validUser.address, contractAddress: VALID_PROGRAM },
       {
         user: poisonedUser.address,
-        contractAddress: POISONED_PROGRAM,
+        contractAddress: program,
       },
     ]);
 
@@ -307,7 +336,341 @@ describe('CacheManagerAutomation — Bids', function () {
     );
   });
 
-  it('processes a duplicated free bid only once', async function () {
+  it('charges a user only once per block for addresses sharing a codehash', async function () {
+    const [firstProgram, secondProgram] =
+      await deployProgramsWithSharedCodehash();
+    await cma
+      .connect(validUser)
+      .insertContract(firstProgram, MAX_BID, true, false, 0);
+    await cma
+      .connect(validUser)
+      .insertContract(secondProgram, MAX_BID, true, false, 0);
+
+    const tx = await cma.connect(owner).placeBids([
+      { user: validUser.address, contractAddress: firstProgram },
+      { user: validUser.address, contractAddress: secondProgram },
+    ]);
+    const receipt = await tx.wait();
+    const bidPlacedEvents = receipt!.logs.flatMap((log) => {
+      try {
+        const parsed = cma.interface.parseLog(log);
+        return parsed?.name === 'BidPlaced' ? [parsed] : [];
+      } catch {
+        return [];
+      }
+    });
+
+    expect(bidPlacedEvents).to.have.length(1);
+    expect(bidPlacedEvents[0].args.contractAddress).to.equal(firstProgram);
+    expect(await cma.connect(validUser).getUserBalance()).to.equal(
+      FUNDING - MIN_BID
+    );
+  });
+
+  it('blocks the auditor interleaving scenario across two shared codehashes', async function () {
+    const [firstP, secondP] = await deployProgramsWithSharedCodehash();
+    const QFactory = await hre.ethers.getContractFactory('MockCacheManager');
+    const firstQ = (await QFactory.deploy()) as MockCacheManager;
+    const secondQ = (await QFactory.deploy()) as MockCacheManager;
+    const firstQAddress = await firstQ.getAddress();
+    const secondQAddress = await secondQ.getAddress();
+    expect(await hre.ethers.provider.getCode(firstQAddress)).to.equal(
+      await hre.ethers.provider.getCode(secondQAddress)
+    );
+
+    for (const program of [firstP, secondP, firstQAddress, secondQAddress]) {
+      await cma
+        .connect(validUser)
+        .insertContract(program, MAX_BID, true, false, 0);
+    }
+
+    const tx = await cma.connect(owner).placeBids([
+      { user: validUser.address, contractAddress: firstP },
+      { user: validUser.address, contractAddress: firstQAddress },
+      { user: validUser.address, contractAddress: secondP },
+      { user: validUser.address, contractAddress: secondQAddress },
+    ]);
+    const receipt = await tx.wait();
+    const bidPlacedEvents = receipt!.logs.flatMap((log) => {
+      try {
+        const parsed = cma.interface.parseLog(log);
+        return parsed?.name === 'BidPlaced' ? [parsed] : [];
+      } catch {
+        return [];
+      }
+    });
+
+    expect(bidPlacedEvents.map((event) => event.args.contractAddress)).to.eql([
+      firstP,
+      firstQAddress,
+    ]);
+    expect(await cma.connect(validUser).getUserBalance()).to.equal(
+      FUNDING - MIN_BID - (MIN_BID + 1n)
+    );
+  });
+
+  it('deduplicates paid shared-codehash bids across calls in the same block', async function () {
+    const [firstProgram, secondProgram] =
+      await deployProgramsWithSharedCodehash();
+    await cma
+      .connect(validUser)
+      .insertContract(firstProgram, MAX_BID, true, false, 0);
+    await cma
+      .connect(validUser)
+      .insertContract(secondProgram, MAX_BID, true, false, 0);
+
+    const CallerFactory = await hre.ethers.getContractFactory(
+      'MockPlaceBidsCaller'
+    );
+    const caller = await CallerFactory.deploy();
+    const tx = await caller.placeTwice(
+      await cma.getAddress(),
+      validUser.address,
+      firstProgram,
+      secondProgram
+    );
+    const receipt = await tx.wait();
+    const bidPlacedCount = receipt!.logs.filter((log) => {
+      try {
+        return cma.interface.parseLog(log)?.name === 'BidPlaced';
+      } catch {
+        return false;
+      }
+    }).length;
+
+    expect(bidPlacedCount).to.equal(1);
+    expect(await cma.connect(validUser).getUserBalance()).to.equal(
+      FUNDING - MIN_BID
+    );
+  });
+
+  it('deduplicates paid shared-codehash bids across transactions in the same block', async function () {
+    const [firstProgram, secondProgram] =
+      await deployProgramsWithSharedCodehash();
+    await cma
+      .connect(validUser)
+      .insertContract(firstProgram, MAX_BID, true, false, 0);
+    await cma
+      .connect(validUser)
+      .insertContract(secondProgram, MAX_BID, true, false, 0);
+
+    await hre.network.provider.send('evm_setAutomine', [false]);
+    try {
+      const firstTx = await cma.connect(owner).placeBids(
+        [{ user: validUser.address, contractAddress: firstProgram }],
+        { gasLimit: 2_000_000 }
+      );
+      const secondTx = await cma.connect(poisonedUser).placeBids(
+        [{ user: validUser.address, contractAddress: secondProgram }],
+        { gasLimit: 2_000_000 }
+      );
+      await hre.network.provider.send('evm_mine');
+
+      const [firstReceipt, secondReceipt] = await Promise.all([
+        firstTx.wait(),
+        secondTx.wait(),
+      ]);
+      expect(firstReceipt!.blockNumber).to.equal(secondReceipt!.blockNumber);
+
+      const bidPlacedCount = [firstReceipt, secondReceipt].reduce(
+        (count, receipt) =>
+          count +
+          receipt!.logs.filter((log) => {
+            try {
+              return cma.interface.parseLog(log)?.name === 'BidPlaced';
+            } catch {
+              return false;
+            }
+          }).length,
+        0
+      );
+      expect(bidPlacedCount).to.equal(1);
+      expect(await cma.connect(validUser).getUserBalance()).to.equal(
+        FUNDING - MIN_BID
+      );
+    } finally {
+      await hre.network.provider.send('evm_setAutomine', [true]);
+    }
+  });
+
+  it('keeps shared-codehash authorizations independent across users', async function () {
+    const [firstProgram, secondProgram] =
+      await deployProgramsWithSharedCodehash();
+    await cma
+      .connect(validUser)
+      .insertContract(firstProgram, MAX_BID, true, false, 0);
+    await cma
+      .connect(poisonedUser)
+      .insertContract(secondProgram, MAX_BID, true, false, 0);
+
+    const tx = await cma.connect(owner).placeBids([
+      { user: validUser.address, contractAddress: firstProgram },
+      { user: poisonedUser.address, contractAddress: secondProgram },
+    ]);
+    await expect(tx)
+      .to.emit(cma, 'BidPlaced')
+      .withArgs(
+        validUser.address,
+        firstProgram,
+        MIN_BID,
+        MAX_BID,
+        FUNDING - MIN_BID
+      );
+    await expect(tx)
+      .to.emit(cma, 'BidPlaced')
+      .withArgs(
+        poisonedUser.address,
+        secondProgram,
+        MIN_BID + 1n,
+        MAX_BID,
+        FUNDING - MIN_BID - 1n
+      );
+  });
+
+  it('allows a shared-codehash alias after an earlier bid fails', async function () {
+    const [firstProgram, secondProgram] =
+      await deployProgramsWithSharedCodehash();
+    await cma
+      .connect(validUser)
+      .insertContract(firstProgram, MAX_BID, true, false, 0);
+    await cma
+      .connect(validUser)
+      .insertContract(secondProgram, MAX_BID, true, false, 0);
+    await cacheManager.setPlaceBidReverts(firstProgram, true);
+
+    const tx = await cma.connect(owner).placeBids([
+      { user: validUser.address, contractAddress: firstProgram },
+      { user: validUser.address, contractAddress: secondProgram },
+    ]);
+
+    await expect(tx)
+      .to.emit(cma, 'BidError')
+      .withArgs(
+        validUser.address,
+        firstProgram,
+        MIN_BID,
+        'Bid placement failed'
+      );
+    await expect(tx)
+      .to.emit(cma, 'BidPlaced')
+      .withArgs(
+        validUser.address,
+        secondProgram,
+        MIN_BID + 1n,
+        MAX_BID,
+        FUNDING - MIN_BID - 1n
+      );
+  });
+
+  it('allows an eligible alias after a shared-codehash request is skipped', async function () {
+    const [firstProgram, secondProgram] =
+      await deployProgramsWithSharedCodehash();
+    await cma
+      .connect(validUser)
+      .insertContract(firstProgram, MAX_BID, false, false, 0);
+    await cma
+      .connect(validUser)
+      .insertContract(secondProgram, MAX_BID, true, false, 0);
+
+    const tx = await cma.connect(owner).placeBids([
+      { user: validUser.address, contractAddress: firstProgram },
+      { user: validUser.address, contractAddress: secondProgram },
+    ]);
+
+    await expect(tx)
+      .to.emit(cma, 'BidPlaced')
+      .withArgs(
+        validUser.address,
+        secondProgram,
+        MIN_BID + 1n,
+        MAX_BID,
+        FUNDING - MIN_BID - 1n
+      );
+  });
+
+  it('does not let a free bid suppress a later paid shared-codehash bid', async function () {
+    const [firstProgram, secondProgram] =
+      await deployProgramsWithSharedCodehash();
+    await cma
+      .connect(validUser)
+      .insertContract(firstProgram, MAX_BID, true, false, 0);
+    await cma
+      .connect(validUser)
+      .insertContract(secondProgram, MAX_BID, true, false, 0);
+    await cacheManager.setMinBid(0);
+    await cacheManager.setCache(100, 0, 0);
+
+    const CallerFactory = await hre.ethers.getContractFactory(
+      'MockPlaceBidsCaller'
+    );
+    const caller = await CallerFactory.deploy();
+
+    await hre.network.provider.send('evm_setAutomine', [false]);
+    try {
+      const freeTx = await cma.connect(owner).placeBids(
+        [{ user: validUser.address, contractAddress: firstProgram }],
+        { gasLimit: 2_000_000 }
+      );
+      const paidTx = await caller.connect(poisonedUser).configureAndPlacePaidBid(
+        await cma.getAddress(),
+        await cacheManager.getAddress(),
+        validUser.address,
+        secondProgram,
+        MIN_BID,
+        { gasLimit: 2_000_000 }
+      );
+      await hre.network.provider.send('evm_mine');
+
+      const [freeReceipt, paidReceipt] = await Promise.all([
+        freeTx.wait(),
+        paidTx.wait(),
+      ]);
+      expect(freeReceipt!.blockNumber).to.equal(paidReceipt!.blockNumber);
+      await expect(freeTx)
+        .to.emit(cma, 'BidPlaced')
+        .withArgs(validUser.address, firstProgram, 0, MAX_BID, FUNDING);
+      await expect(paidTx)
+        .to.emit(cma, 'BidPlaced')
+        .withArgs(
+          validUser.address,
+          secondProgram,
+          MIN_BID,
+          MAX_BID,
+          FUNDING - MIN_BID
+        );
+    } finally {
+      await hre.network.provider.send('evm_setAutomine', [true]);
+    }
+  });
+
+  it('allows a user to pay for the same codehash again in a later block', async function () {
+    const [firstProgram, secondProgram] =
+      await deployProgramsWithSharedCodehash();
+    await cma
+      .connect(validUser)
+      .insertContract(firstProgram, MAX_BID, true, false, 0);
+    await cma
+      .connect(validUser)
+      .insertContract(secondProgram, MAX_BID, true, false, 0);
+
+    const firstTx = await cma
+      .connect(owner)
+      .placeBids([{ user: validUser.address, contractAddress: firstProgram }]);
+    const firstReceipt = await firstTx.wait();
+    const secondTx = await cma
+      .connect(owner)
+      .placeBids([{ user: validUser.address, contractAddress: secondProgram }]);
+    const secondReceipt = await secondTx.wait();
+
+    expect(secondReceipt!.blockNumber).to.be.greaterThan(
+      firstReceipt!.blockNumber
+    );
+    expect(await cma.connect(validUser).getUserBalance()).to.equal(
+      FUNDING - MIN_BID * 2n
+    );
+  });
+
+  it('does not let a free bid claim the paid-bid deduplication slot', async function () {
     await cacheManager.setMinBid(0);
     await cacheManager.setCache(100, 0, 0);
 
@@ -325,20 +688,24 @@ describe('CacheManagerAutomation — Bids', function () {
         return [];
       }
     });
-    expect(bidPlacedEvents).to.have.length(1);
+    expect(bidPlacedEvents).to.have.length(2);
     expect(await cma.connect(validUser).getUserBalance()).to.equal(FUNDING);
   });
 
   it('uses the first occurrence index when calculating a duplicated bid', async function () {
+    const [program] = await deployProgramsWithSharedCodehash();
+    await cma
+      .connect(poisonedUser)
+      .insertContract(program, MAX_BID, true, false, 0);
     const tx = await cma.connect(owner).placeBids([
       {
         user: poisonedUser.address,
-        contractAddress: POISONED_PROGRAM,
+        contractAddress: program,
       },
       { user: validUser.address, contractAddress: VALID_PROGRAM },
       {
         user: poisonedUser.address,
-        contractAddress: POISONED_PROGRAM,
+        contractAddress: program,
       },
     ]);
 
@@ -359,55 +726,6 @@ describe('CacheManagerAutomation — Bids', function () {
     expect(duplicatedPairEvents[0].args.bidAmount).to.equal(MIN_BID);
     expect(await cma.connect(poisonedUser).getUserBalance()).to.equal(
       FUNDING - MIN_BID
-    );
-  });
-
-  it('deduplicates correctly across hash collisions and table wrap-around', async function () {
-    const coder = hre.ethers.AbiCoder.defaultAbiCoder();
-    const collidingPrograms: string[] = [];
-
-    // Four requests allocate an eight-slot table. Bucket 7 forces probes to
-    // wrap through slots 0 and 1 for the second and third unique programs.
-    // Stay above the precompile range so every candidate is an empty account.
-    for (let candidate = 0x10000; collidingPrograms.length < 3; candidate++) {
-      const program = hre.ethers.getAddress(
-        `0x${candidate.toString(16).padStart(40, '0')}`
-      );
-      const key = hre.ethers.keccak256(
-        coder.encode(['address', 'address'], [poisonedUser.address, program])
-      );
-      if ((BigInt(key) & 7n) === 7n) collidingPrograms.push(program);
-    }
-
-    for (const program of collidingPrograms) {
-      await cma
-        .connect(poisonedUser)
-        .insertContract(program, MAX_BID, true, false, 0, { value: 0 });
-    }
-
-    const tx = await cma.connect(owner).placeBids([
-      ...collidingPrograms.map((contractAddress) => ({
-        user: poisonedUser.address,
-        contractAddress,
-      })),
-      {
-        user: poisonedUser.address,
-        contractAddress: collidingPrograms[2],
-      },
-    ]);
-
-    const receipt = await tx.wait();
-    const bidPlacedEvents = receipt!.logs.flatMap((log) => {
-      try {
-        const parsed = cma.interface.parseLog(log);
-        return parsed?.name === 'BidPlaced' ? [parsed] : [];
-      } catch {
-        return [];
-      }
-    });
-    expect(bidPlacedEvents).to.have.length(3);
-    expect(await cma.connect(poisonedUser).getUserBalance()).to.equal(
-      FUNDING - MIN_BID - (MIN_BID + 1n) - (MIN_BID + 2n)
     );
   });
 

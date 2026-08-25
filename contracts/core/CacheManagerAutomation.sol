@@ -5,6 +5,7 @@ pragma solidity 0.8.30;
 import {EnumerableSet} from '@openzeppelin/contracts/utils/structs/EnumerableSet.sol';
 import {Ownable2Step} from '@openzeppelin/contracts/access/Ownable2Step.sol';
 import {ReentrancyGuard} from '@openzeppelin/contracts/security/ReentrancyGuard.sol';
+import {ArbSys} from '@arbitrum/nitro-contracts/src/precompiles/ArbSys.sol';
 import {BiddingEscrow} from './BiddingEscrow.sol';
 
 // Interfaces
@@ -28,6 +29,7 @@ contract CacheManagerAutomation is
     /// @dev bytes4(keccak256("ProgramNeedsUpgrade(uint16,uint16)")); an old
     /// program version must be reactivated against the current Stylus version.
     bytes4 private constant PROGRAM_NEEDS_UPGRADE_SELECTOR = 0x637d968f;
+    ArbSys private constant ARB_SYS = ArbSys(address(100));
     // Operational limits match the tested/default batch and pagination sizes.
     uint256 private constant MAX_BIDS_PER_ITERATION_LIMIT = 50;
     uint256 private constant MAX_USERS_PER_PAGE_LIMIT = 100;
@@ -57,6 +59,11 @@ contract CacheManagerAutomation is
     IArbWasm public immutable arbWasm;
     mapping(address user => ContractConfig[] contracts) public userContracts;
     EnumerableSet.AddressSet private usersWithContracts;
+    /// @dev Prevents one user's escrow from paying more than once per block to
+    ///      cache the same codehash. Stylus cache entries are keyed by codehash,
+    ///      so multiple contract addresses may refer to the same entry.
+    mapping(address user => mapping(bytes32 codehash => uint256 blockNumber))
+        private lastPaidBidBlock;
 
     // ------------------------------------------------------------------------
     // Constructor
@@ -412,46 +419,25 @@ contract CacheManagerAutomation is
         if (_bidRequests.length > maxBidsPerIteration) revert TooManyBids();
         if (_bidRequests.length == 0) return;
 
-        // Allocate at least two slots per request to reduce the expected number
-        // of linear probes. Deliberately colliding keys can still cost O(n^2).
-        uint256 tableSize = 1;
-        while (tableSize < _bidRequests.length * 2) tableSize <<= 1;
-        bytes32[] memory seenRequests = new bytes32[](tableSize);
+        uint256 currentBlock = ARB_SYS.arbBlockNumber();
 
         for (uint256 i = 0; i < _bidRequests.length; i++) {
-            if (_isDuplicateBidRequest(seenRequests, _bidRequests[i]))
-                continue;
+            bytes32 codehash = _bidRequests[i].contractAddress.codehash;
+            if (
+                codehash != bytes32(0) &&
+                lastPaidBidBlock[_bidRequests[i].user][codehash] == currentBlock
+            ) continue;
             BidResult memory result = _shouldBid(_bidRequests[i], i);
             if (!result.shouldBid) continue;
-            _placeBid(
+            bool placed = _placeBid(
                 _bidRequests[i].user,
                 result.contractConfig,
                 result.bidAmount
             );
+            if (placed && result.bidAmount != 0 && codehash != bytes32(0)) {
+                lastPaidBidBlock[_bidRequests[i].user][codehash] = currentBlock;
+            }
         }
-    }
-
-    /// @dev Inserts a user-contract pair into an in-memory hash set and returns
-    ///      true when the pair was already present. The first occurrence wins
-    ///      even if it is later skipped by _shouldBid. The table is power-of-two
-    ///      sized, so wrapping linear probes only requires a bit mask.
-    function _isDuplicateBidRequest(
-        bytes32[] memory seenRequests,
-        BidRequest calldata bidRequest
-    ) internal pure returns (bool) {
-        bytes32 key = keccak256(
-            abi.encode(bidRequest.user, bidRequest.contractAddress)
-        );
-        uint256 mask = seenRequests.length - 1;
-        uint256 index = uint256(key) & mask;
-
-        while (seenRequests[index] != bytes32(0)) {
-            if (seenRequests[index] == key) return true;
-            index = (index + 1) & mask;
-        }
-
-        seenRequests[index] = key;
-        return false;
     }
 
     function placeActivations(
@@ -717,7 +703,7 @@ contract CacheManagerAutomation is
         address user,
         ContractConfig memory contractConfig,
         uint192 bidAmount
-    ) internal {
+    ) internal returns (bool placed) {
         address contractAddress = contractConfig.contractAddress;
         uint256 maxBid = contractConfig.maxBid;
 
@@ -726,6 +712,7 @@ contract CacheManagerAutomation is
             try cacheManager.placeBid{value: 0}(contractAddress) {
                 uint256 userBalance = escrow.depositsOf(user);
                 emit BidPlaced(user, contractAddress, 0, maxBid, userBalance);
+                return true;
             } catch {
                 emit BidError(
                     user,
@@ -733,6 +720,7 @@ contract CacheManagerAutomation is
                     0,
                     'Free bid placement failed'
                 );
+                return false;
             }
         } else {
             // Paid bid - withdraw from escrow and place bid
@@ -746,6 +734,7 @@ contract CacheManagerAutomation is
                         maxBid,
                         userBalance
                     );
+                    return true;
                 } catch {
                     // Return bid amount to user if bid placement fails
                     escrow.deposit{value: bidAmount}(user);
@@ -755,6 +744,7 @@ contract CacheManagerAutomation is
                         bidAmount,
                         'Bid placement failed'
                     );
+                    return false;
                 }
             } catch {
                 emit BidError(
@@ -763,6 +753,7 @@ contract CacheManagerAutomation is
                     bidAmount,
                     'Insufficient balance'
                 );
+                return false;
             }
         }
     }
