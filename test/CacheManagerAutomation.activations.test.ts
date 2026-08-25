@@ -490,6 +490,18 @@ describe('CacheManagerAutomation — Activations', function () {
       expect(await cma.maxActivationsPerIteration()).to.equal(5n);
     });
 
+    it('caps the maximum contracts per user', async function () {
+      await expect(cma.setMaxContractsPerUser(100))
+        .to.emit(cma, 'MaxContractsPerUserUpdated')
+        .withArgs(50, 100);
+      expect(await cma.maxContractsPerUser()).to.equal(100n);
+
+      await expect(
+        cma.setMaxContractsPerUser(101)
+      ).to.be.revertedWithCustomError(cma, 'InvalidMaxContractsPerUser');
+      expect(await cma.maxContractsPerUser()).to.equal(100n);
+    });
+
     it('requires a positive minimum maximum bid', async function () {
       await expect(cma.setMinMaxBidAmount(0)).to.be.revertedWithCustomError(
         cma,

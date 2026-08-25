@@ -46,7 +46,6 @@ export const ARB_WASM_ADDRESSES = {
 
 // Contract configuration defaults
 export const DEFAULT_CONFIG = {
-  maxContractsPerUser: 100,
   maxUserFunds: '1000000000000000000', // 1 ETH in wei
 };
 

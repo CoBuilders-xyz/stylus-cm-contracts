@@ -32,6 +32,7 @@ contract CacheManagerAutomation is
     ArbSys private constant ARB_SYS = ArbSys(address(100));
     // Operational limits match the tested/default batch and pagination sizes.
     uint256 private constant MAX_BIDS_PER_ITERATION_LIMIT = 50;
+    uint256 private constant MAX_CONTRACTS_PER_USER_LIMIT = 100;
     uint256 private constant MAX_USERS_PER_PAGE_LIMIT = 100;
     uint256 private constant MAX_HORIZON_SECONDS = 365 days;
     uint192 private constant MAX_BID_INCREMENT = 1 ether;
@@ -117,7 +118,10 @@ contract CacheManagerAutomation is
     function setMaxContractsPerUser(
         uint256 _maxContractsPerUser
     ) external onlyOwner {
-        if (_maxContractsPerUser == 0) revert InvalidMaxContractsPerUser();
+        if (
+            _maxContractsPerUser == 0 ||
+            _maxContractsPerUser > MAX_CONTRACTS_PER_USER_LIMIT
+        ) revert InvalidMaxContractsPerUser();
         uint256 oldValue = maxContractsPerUser;
         maxContractsPerUser = _maxContractsPerUser;
         emit MaxContractsPerUserUpdated(oldValue, _maxContractsPerUser);
