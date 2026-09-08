@@ -7,6 +7,9 @@ import { ignition } from './config/ignition';
 const config: HardhatUserConfig = {
   networks,
   ignition,
+  etherscan: {
+    apiKey: process.env.ETHERSCAN_API_KEY || '',
+  },
   solidity: {
     compilers: [
       {
