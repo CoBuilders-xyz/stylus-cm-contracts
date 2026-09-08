@@ -19,7 +19,7 @@ type ScenarioContract = {
   address: string;
   maxBidWei: string;
   maxActivationCostWei: string;
-  enabled: boolean;
+  biddingEnabled: boolean;
   autoActivate: boolean;
 };
 
@@ -47,7 +47,7 @@ const PROGRAM_NOT_ACTIVATED_SELECTOR = '0x6f809c4e';
 
 const CMA_ABI = [
   'function insertContract(address,uint256,bool,bool,uint256) payable',
-  'function getUserContracts() view returns ((address contractAddress,uint256 maxBid,bool enabled,bool autoActivate,uint256 maxActivationCost)[])',
+  'function getUserContracts() view returns ((address contractAddress,bool biddingEnabled,bool autoActivate,uint256 maxBid,uint256 maxActivationCost)[])',
   'function getUserBalance() view returns (uint256)',
   'function placeBids((address user,address contractAddress)[])',
   'function placeActivations((address user,address contractAddress)[])',
@@ -73,32 +73,32 @@ const ARB_WASM_CACHE_ABI = [
 const ROLE_CONFIG: Record<
   Role,
   {
-    enabled: boolean;
+    biddingEnabled: boolean;
     autoActivate: boolean;
     maxBidWei: bigint;
     maxActivationCostWei: bigint;
   }
 > = {
   both: {
-    enabled: true,
+    biddingEnabled: true,
     autoActivate: true,
     maxBidWei: DEFAULT_MAX_BID,
     maxActivationCostWei: DEFAULT_MAX_ACTIVATION_COST,
   },
   'bid-only': {
-    enabled: true,
+    biddingEnabled: true,
     autoActivate: false,
     maxBidWei: DEFAULT_MAX_BID,
     maxActivationCostWei: 0n,
   },
   'activation-only': {
-    enabled: false,
+    biddingEnabled: false,
     autoActivate: true,
     maxBidWei: DEFAULT_MAX_BID,
     maxActivationCostWei: DEFAULT_MAX_ACTIVATION_COST,
   },
   passive: {
-    enabled: false,
+    biddingEnabled: false,
     autoActivate: false,
     maxBidWei: DEFAULT_MAX_BID,
     maxActivationCostWei: 0n,
@@ -153,7 +153,28 @@ function saveScenario(filePath: string, scenario: ScenarioState) {
 }
 
 function loadScenario(filePath: string): ScenarioState {
-  return JSON.parse(fs.readFileSync(filePath, 'utf8')) as ScenarioState;
+  const scenario = JSON.parse(fs.readFileSync(filePath, 'utf8')) as unknown;
+  const contracts =
+    scenario && typeof scenario === 'object'
+      ? (scenario as { contracts?: unknown }).contracts
+      : undefined;
+
+  if (
+    !Array.isArray(contracts) ||
+    contracts.some(
+      (item) =>
+        !item ||
+        typeof item !== 'object' ||
+        typeof (item as { biddingEnabled?: unknown }).biddingEnabled !==
+          'boolean'
+    )
+  ) {
+    throw new Error(
+      'Scenario file uses an outdated contract format. Re-create it with setup --force.'
+    );
+  }
+
+  return scenario as ScenarioState;
 }
 
 function loadEnv(envFile: string) {
@@ -280,7 +301,7 @@ async function registerContracts(
       const tx = await cma.insertContract(
         cfg.address,
         cfg.maxBidWei,
-        cfg.enabled,
+        cfg.biddingEnabled,
         cfg.autoActivate,
         cfg.maxActivationCostWei,
         { value }
@@ -374,7 +395,7 @@ async function printReport(scenario: ScenarioState) {
       (item) => item.userLabel === user.label
     )) {
       console.log(
-        `  - ${contractData.role.padEnd(15)} ${contractData.address} enabled=${contractData.enabled} autoActivate=${contractData.autoActivate} cached=${contractData.cached} state=${contractData.programState}`
+        `  - ${contractData.role.padEnd(15)} ${contractData.address} biddingEnabled=${contractData.biddingEnabled} autoActivate=${contractData.autoActivate} cached=${contractData.cached} state=${contractData.programState}`
       );
     }
   }
@@ -424,7 +445,7 @@ async function placeBids(
 
   const requests = scenario.contracts
     .filter((item) => selectedRoles.includes(item.role))
-    .filter((item) => item.enabled)
+    .filter((item) => item.biddingEnabled)
     .map((item) => ({
       user: scenario.users.find((user) => user.label === item.userLabel)!.address,
       contractAddress: item.address,
@@ -528,7 +549,7 @@ async function setupScenario(envFile: string, scenarioFile: string, force: boole
         address: dummyAddresses[index++],
         maxBidWei: cfg.maxBidWei.toString(),
         maxActivationCostWei: cfg.maxActivationCostWei.toString(),
-        enabled: cfg.enabled,
+        biddingEnabled: cfg.biddingEnabled,
         autoActivate: cfg.autoActivate,
       });
     }

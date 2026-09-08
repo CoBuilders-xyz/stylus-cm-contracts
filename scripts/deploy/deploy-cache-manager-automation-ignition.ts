@@ -41,6 +41,8 @@ async function main() {
     );
 
     const deployedAddress = await cacheManagerAutomation.getAddress();
+    const maxContractsPerUser =
+      await cacheManagerAutomation.maxContractsPerUser();
     console.log(`✅ CacheManagerAutomation deployed to: ${deployedAddress}`);
 
     // Display deployment summary
@@ -51,7 +53,7 @@ async function main() {
     console.log(`   Cache Manager: ${config.cacheManagerAddress}`);
     console.log(`   ARB WASM Cache: ${config.arbWasmCacheAddress}`);
     console.log(`   ARB WASM: ${config.arbWasmAddress}`);
-    console.log(`   Max Contracts Per User: ${config.maxContractsPerUser}`);
+    console.log(`   Max Contracts Per User: ${maxContractsPerUser}`);
     console.log(`   Max User Funds: ${config.maxUserFunds}`);
     console.log(`   Verify Contracts: ${config.verify}`);
 

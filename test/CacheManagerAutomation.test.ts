@@ -32,7 +32,7 @@ describe('cacheManagerAutomation', async function () {
   async function insertContract(
     contractAddress: string,
     maxBid = DEFAULT_MAX_BID,
-    enabled = true,
+    biddingEnabled = true,
     wallet?: Wallet | Signer,
     funding?: bigint,
     autoActivate = false,
@@ -44,7 +44,7 @@ describe('cacheManagerAutomation', async function () {
       .insertContract(
         contractAddress,
         maxBid,
-        enabled,
+        biddingEnabled,
         autoActivate,
         maxActivationCost,
         { value: funding || 0n }
@@ -69,6 +69,9 @@ describe('cacheManagerAutomation', async function () {
     // Calculate event signatures for BiddingEscrow events
     const depositedSignature = hre.ethers.id('Deposited(address,uint256)');
     const withdrawnSignature = hre.ethers.id('Withdrawn(address,uint256)');
+    const automationWithdrawalSignature = hre.ethers.id(
+      'WithdrawnForAutomation(address,address,uint256)'
+    );
 
     const events: Array<{ eventName: string; args: any }> = [];
 
@@ -124,6 +127,24 @@ describe('cacheManagerAutomation', async function () {
               `\t   Args: ${payee.slice(0, 10)}..., ${hre.ethers.formatEther(
                 amount
               )} ETH`
+            );
+          }
+        } else if (topic0 === automationWithdrawalSignature) {
+          const depositor = '0x' + log.topics[1].slice(26);
+          const recipient = '0x' + log.topics[2].slice(26);
+          const amount = log.data;
+          events.push({
+            eventName: 'WithdrawnForAutomation',
+            args: [depositor, recipient, amount],
+          });
+          if (showLogs) {
+            console.log(`\t${index + 1}. 🤖 WithdrawnForAutomation`);
+            console.log(`\t   Contract: BiddingEscrow`);
+            console.log(
+              `\t   Args: ${depositor.slice(0, 10)}... -> ${recipient.slice(
+                0,
+                10
+              )}..., ${hre.ethers.formatEther(amount)} ETH`
             );
           }
         } else if (topic0 === withdrawnSignature) {
@@ -427,6 +448,51 @@ describe('cacheManagerAutomation', async function () {
           initialUserBalance + hre.ethers.parseEther('0.001')
         );
       });
+
+      it('Should enforce minFundAmount when insertContract receives ETH', async function () {
+        const isolatedDeployment = await deployCMA();
+        const minFundAmount = 100n;
+        const contractAddress = hre.ethers.getAddress(
+          process.env.CACHE_MANAGER_ADDRESS!
+        );
+        await isolatedDeployment.cacheManagerAutomation.setMinFundAmount(
+          minFundAmount
+        );
+
+        const balanceBefore = await isolatedDeployment.cacheManagerAutomation
+          .connect(user)
+          .getUserBalance();
+        const contractsBefore = await isolatedDeployment.cacheManagerAutomation
+          .connect(user)
+          .getUserContracts();
+
+        await expect(
+          isolatedDeployment.cacheManagerAutomation
+            .connect(user)
+            .insertContract(
+              contractAddress,
+              DEFAULT_MAX_BID,
+              true,
+              false,
+              0,
+              { value: minFundAmount - 1n }
+            )
+        ).to.be.revertedWithCustomError(
+          isolatedDeployment.cacheManagerAutomation,
+          'InvalidFundAmount'
+        );
+
+        expect(
+          await isolatedDeployment.cacheManagerAutomation
+            .connect(user)
+            .getUserBalance()
+        ).to.equal(balanceBefore);
+        expect(
+          await isolatedDeployment.cacheManagerAutomation
+            .connect(user)
+            .getUserContracts()
+        ).to.have.length(contractsBefore.length);
+      });
     });
     describe('Contract Removal', function () {
       it('Should remove a contract from CMA', async function () {
@@ -585,7 +651,7 @@ describe('cacheManagerAutomation', async function () {
         expect(updatedContract?.maxBid).to.equal(updatedMaxBid);
       });
 
-      it('Should update a contract enabled status', async function () {
+      it('Should update automated bidding status', async function () {
         const [contract] = await deployDummyWASMContracts(1);
 
         const contractToCacheAddress = hre.ethers.getAddress(contract);
@@ -610,10 +676,10 @@ describe('cacheManagerAutomation', async function () {
         const updatedContract = userContracts.find(
           (c) => c.contractAddress === contractToCacheAddress
         );
-        expect(updatedContract?.enabled).to.equal(false);
+        expect(updatedContract?.biddingEnabled).to.equal(false);
       });
 
-      it('Should update a contract enabled status and max bid', async function () {
+      it('Should update automated bidding status and max bid', async function () {
         const [contract] = await deployDummyWASMContracts(1);
 
         const contractToCacheAddress = hre.ethers.getAddress(contract);
@@ -634,7 +700,7 @@ describe('cacheManagerAutomation', async function () {
         const updatedContract = userContracts.find(
           (c) => c.contractAddress === contractToCacheAddress
         );
-        expect(updatedContract?.enabled).to.equal(false);
+        expect(updatedContract?.biddingEnabled).to.equal(false);
         expect(updatedContract?.maxBid).to.equal(updatedMaxBid);
       });
 
@@ -662,7 +728,7 @@ describe('cacheManagerAutomation', async function () {
         let updatedContract = userContracts.find(
           (c) => c.contractAddress === contractToCacheAddress
         );
-        expect(updatedContract?.enabled).to.equal(false);
+        expect(updatedContract?.biddingEnabled).to.equal(false);
 
         await cmaDeployment.cacheManagerAutomation
           .connect(user)
@@ -675,7 +741,7 @@ describe('cacheManagerAutomation', async function () {
         updatedContract = userContracts.find(
           (c) => c.contractAddress === contractToCacheAddress
         );
-        expect(updatedContract?.enabled).to.equal(true);
+        expect(updatedContract?.biddingEnabled).to.equal(true);
       });
     });
   });
@@ -865,6 +931,106 @@ describe('cacheManagerAutomation', async function () {
         // Validate that the expected events were emitted
         const eventNames = events.map((event) => event.eventName);
         expect(eventNames).to.include('BidPlaced');
+      });
+
+      it('Should skip a non-Stylus entry when getMinBid reverts and continue the batch', async function () {
+        this.timeout(0);
+
+        const configuredProgram = process.env.ISSUE_2_VALID_PROGRAM;
+        const validProgramAddress = configuredProgram
+          ? hre.ethers.getAddress(configuredProgram)
+          : hre.ethers.getAddress((await deployDummyWASMContracts(1))[0]);
+        const invalidProgramAddress = hre.ethers.getAddress(
+          process.env.CACHE_MANAGER_ADDRESS!
+        );
+        const maxBid = hre.ethers.parseEther('0.001');
+        const funding = hre.ethers.parseEther('0.01');
+
+        if (!configuredProgram) {
+          const arbWasm = new hre.ethers.Contract(
+            process.env.ARB_WASM_ADDRESS ||
+              '0x0000000000000000000000000000000000000071',
+            [
+              'function activateProgram(address program) payable returns (uint16 version, uint256 dataFee)',
+            ],
+            owner
+          );
+          await (
+            await arbWasm.activateProgram(validProgramAddress, {
+              value: hre.ethers.parseEther('0.01'),
+              gasLimit: 20_000_000,
+            })
+          ).wait();
+        }
+
+        const walletFunding = hre.ethers.parseEther('0.02');
+        const poisonedUser = await createAndFundWallet(walletFunding);
+        const validUser = await createAndFundWallet(walletFunding);
+        await insertContract(
+          invalidProgramAddress,
+          maxBid,
+          true,
+          poisonedUser,
+          funding
+        );
+        await insertContract(
+          validProgramAddress,
+          maxBid,
+          true,
+          validUser,
+          funding
+        );
+
+        const cacheManagerWithErrors = new hre.ethers.Contract(
+          invalidProgramAddress,
+          [
+            'function getMinBid(address program) external view returns (uint192)',
+            'error ProgramNotActivated()',
+          ],
+          owner
+        );
+        await expect(
+          cacheManagerWithErrors.getMinBid(invalidProgramAddress)
+        ).to.be.revertedWithCustomError(
+          cacheManagerWithErrors,
+          'ProgramNotActivated'
+        );
+
+        const poisonedBalanceBefore = await cmaDeployment.cacheManagerAutomation
+          .connect(poisonedUser)
+          .getUserBalance();
+        const validBalanceBefore = await cmaDeployment.cacheManagerAutomation
+          .connect(validUser)
+          .getUserBalance();
+        const tx = await cmaDeployment.cacheManagerAutomation.placeBids([
+          {
+            contractAddress: invalidProgramAddress,
+            user: poisonedUser.address,
+          },
+          {
+            contractAddress: validProgramAddress,
+            user: validUser.address,
+          },
+        ]);
+        const events = logTransactionEvents(await tx.wait(), false);
+        const bidPlacedEvents = events.filter(
+          (event) => event.eventName === 'BidPlaced'
+        );
+
+        expect(bidPlacedEvents).to.have.length(1);
+        expect(bidPlacedEvents[0].args[0]).to.equal(validUser.address);
+        expect(bidPlacedEvents[0].args[1]).to.equal(validProgramAddress);
+        const validBidAmount = bidPlacedEvents[0].args[2];
+        expect(
+          await cmaDeployment.cacheManagerAutomation
+            .connect(poisonedUser)
+            .getUserBalance()
+        ).to.equal(poisonedBalanceBefore);
+        expect(
+          await cmaDeployment.cacheManagerAutomation
+            .connect(validUser)
+            .getUserBalance()
+        ).to.equal(validBalanceBefore - validBidAmount);
       });
 
       it('Should deduct balance when bid is placed and minBid != 0', async function () {

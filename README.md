@@ -7,7 +7,7 @@ This repository contains the smart contracts for the Stylus Cache Manager Automa
 The Stylus Cache Manager Automation system consists of two main contracts:
 
 1. **CacheManagerAutomation**: The core contract that handles the automation of cache management operations in the Stylus ecosystem.
-2. **BiddingEscrow**: A specialized escrow contract based on OpenZeppelin's Escrow implementation.
+2. **BiddingEscrow**: A specialized escrow owned by CacheManagerAutomation.
 
 ### CacheManagerAutomation
 
@@ -27,11 +27,11 @@ Key features include:
 
 ### BiddingEscrow
 
-The BiddingEscrow contract is built upon OpenZeppelin's standard Escrow contract implementation, with one key addition:
+The BiddingEscrow contract holds user funds for automated cache operations:
 
-- `withdrawForBid`: A specialized withdrawal function specifically designed for our bidding system use case
+- `withdrawForAutomation`: Transfers a specific amount to CacheManagerAutomation for a cache bid or program activation.
 
-The BiddingEscrow contract maintains the security and reliability of the standard OpenZeppelin implementation while adding the necessary functionality for our bidding mechanism.
+Regular user withdrawals and automation funding emit distinct events so off-chain consumers can identify the actual recipient.
 
 ## Project Structure
 

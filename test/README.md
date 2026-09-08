@@ -12,8 +12,8 @@ It creates:
 
 Per user, the 4 contracts are:
 
-- `both`: cache + activation enabled
-- `bid-only`: cache only
+- `both`: automated bidding + activation enabled
+- `bid-only`: automated bidding only
 - `activation-only`: activation only
 - `passive`: neither
 
@@ -174,7 +174,7 @@ npm run scenario:multi-user -- \
   --roles both,bid-only
 ```
 
-This targets only the 4 cache-enabled contracts.
+This targets only the 4 automated-bidding contracts.
 
 ## Step 7: Check state after bids
 

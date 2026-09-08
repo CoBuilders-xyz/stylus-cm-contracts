@@ -1,30 +1,31 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
-import {Escrow} from '@openzeppelin/contracts/utils/escrow/Escrow.sol';
 import {Ownable} from '@openzeppelin/contracts/access/Ownable.sol';
 import {Address} from '@openzeppelin/contracts/utils/Address.sol';
 
 /**
- * @title Escrow
- * @dev Base escrow contract, holds funds designated for a payee until they
- * withdraw them.
- *
- * Intended usage: This contract (and derived escrow contracts) should be a
- * standalone contract, that only interacts with the contract that instantiated
- * it. That way, it is guaranteed that all Ether will be handled according to
- * the `Escrow` rules, and there is no need to check for payable functions or
- * transfers in the inheritance tree. The contract that uses the escrow as its
- * payment method should be its owner, and provide public methods redirecting
- * to the escrow's deposit and withdraw.
+ * @title Bidding Escrow
+ * @notice Holds user funds used by CacheManagerAutomation for cache bids and
+ * program activations.
+ * @dev The deploying CacheManagerAutomation contract owns this contract and
+ * exclusively manages deposits, user withdrawals, and transfers needed for
+ * protocol operations.
  */
 contract BiddingEscrow is Ownable {
     using Address for address payable;
 
+    error AmountExceedsBalance();
+
     event Deposited(address indexed payee, uint256 weiAmount);
     event Withdrawn(address indexed payee, uint256 weiAmount);
+    event WithdrawnForAutomation(
+        address indexed depositor,
+        address indexed recipient,
+        uint256 weiAmount
+    );
 
-    mapping(address => uint256) private _deposits;
+    mapping(address account => uint256 balance) private _deposits;
 
     function depositsOf(address payee) public view returns (uint256) {
         return _deposits[payee];
@@ -65,31 +66,32 @@ contract BiddingEscrow is Ownable {
     }
 
     /**
-     * @dev Withdraws a specific amount from a user's balance to the owner contract for bid placement.
-     * The withdrawn funds are sent to the owner (CacheManagerAutomation contract) to be used for bidding.
+     * @dev Withdraws a specific amount from a user's balance to the owner
+     * contract for cache bids or program activations.
      *
-     * WARNING: This function should only be called by the owner contract during bid placement.
-     * Make sure proper checks are in place before calling this function.
+     * WARNING: This function should only be called by the owner contract while
+     * executing one of those operations.
      *
-     * @param depositor The address whose funds will be partially withdrawn for bidding
-     * @param amount The amount to withdraw for the bid
+     * @param depositor The address whose funds will be partially withdrawn
+     * @param amount The amount to withdraw for the protocol operation
      *
-     * Emits a {Withdrawn} event.
+     * Emits a {WithdrawnForAutomation} event.
      */
-    function withdrawForBid(
+    function withdrawForAutomation(
         address depositor,
         uint256 amount
     ) public onlyOwner {
         uint256 balance = _deposits[depositor];
 
         if (amount > balance) {
-            revert('Amount exceeds balance');
+            revert AmountExceedsBalance();
         }
 
         _deposits[depositor] = balance - amount;
 
-        payable(owner()).sendValue(amount);
+        address recipient = msg.sender;
+        payable(recipient).sendValue(amount);
 
-        emit Withdrawn(depositor, amount);
+        emit WithdrawnForAutomation(depositor, recipient, amount);
     }
 }
