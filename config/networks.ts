@@ -4,8 +4,10 @@ dotenv.config();
 
 // Only pass a signer when a real private key is configured.
 // An empty or all-zero key makes Hardhat fail on tasks like `verify`.
-const accountsFrom = (pk?: string): string[] =>
-  pk && !/^(0x)?0+$/.test(pk) ? [pk] : [];
+const accountsFrom = (pk?: string): string[] => {
+  const normalized = pk?.trim();
+  return normalized && !/^(0x)?0+$/i.test(normalized) ? [normalized] : [];
+};
 
 export const networks: NetworksUserConfig = {
   hardhat: {
