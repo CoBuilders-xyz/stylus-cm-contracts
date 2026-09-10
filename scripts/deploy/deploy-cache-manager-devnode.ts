@@ -9,17 +9,31 @@ import path from 'path';
 
 async function main() {
   const networkName = hre.network.name;
+  if (networkName !== 'localArb') {
+    throw new Error(
+      `This script targets the devnode only. Current network: ${networkName}`,
+    );
+  }
   console.log(`Deploying real CacheManager to ${networkName}...`);
 
   const [deployer] = await hre.ethers.getSigners();
   console.log(`Deployer: ${deployer.address}`);
 
-  // Load the compiled CacheManager artifact
-  const artifactPath = path.resolve(
-    __dirname,
-    '../../../stylus-cm-backend/src/common/abis/cacheManager/cacheManager.json',
-  );
+  // Load the compiled CacheManager artifact (ABI + bytecode)
+  const artifactPath =
+    process.env.CACHE_MANAGER_ARTIFACT_PATH ??
+    path.resolve(__dirname, '../../abis/external/cacheManager.abi.json');
+  if (!fs.existsSync(artifactPath)) {
+    throw new Error(
+      `CacheManager artifact not found at ${artifactPath}. Set CACHE_MANAGER_ARTIFACT_PATH to override.`,
+    );
+  }
   const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf-8'));
+  if (!Array.isArray(artifact.abi) || typeof artifact.bytecode !== 'string') {
+    throw new Error(
+      `CacheManager artifact at ${artifactPath} must contain "abi" and "bytecode".`,
+    );
+  }
 
   // Deploy implementation
   const implFactory = new hre.ethers.ContractFactory(
