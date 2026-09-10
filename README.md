@@ -7,7 +7,7 @@ This repository contains the smart contracts for the Stylus Cache Manager Automa
 The Stylus Cache Manager Automation system consists of two main contracts:
 
 1. **CacheManagerAutomation**: The core contract that handles the automation of cache management operations in the Stylus ecosystem.
-2. **BiddingEscrow**: A specialized escrow contract based on OpenZeppelin's Escrow implementation.
+2. **BiddingEscrow**: A specialized escrow owned by CacheManagerAutomation.
 
 ### CacheManagerAutomation
 
@@ -27,11 +27,11 @@ Key features include:
 
 ### BiddingEscrow
 
-The BiddingEscrow contract is built upon OpenZeppelin's standard Escrow contract implementation, with one key addition:
+The BiddingEscrow contract holds user funds for automated cache operations:
 
-- `withdrawForBid`: A specialized withdrawal function specifically designed for our bidding system use case
+- `withdrawForAutomation`: Transfers a specific amount to CacheManagerAutomation for a cache bid or program activation.
 
-The BiddingEscrow contract maintains the security and reliability of the standard OpenZeppelin implementation while adding the necessary functionality for our bidding mechanism.
+Regular user withdrawals and automation funding emit distinct events so off-chain consumers can identify the actual recipient.
 
 ## Project Structure
 
@@ -243,9 +243,21 @@ Detailed documentation for these contracts can be found in:
 
 ## Security
 
+### Audits
+
+| Auditor | Dates | Scope | Audited commit | Fixes | Report |
+| --- | --- | --- | --- | --- | --- |
+| [Cyfrin](https://www.cyfrin.io/) | 2026-05-21 to 2026-05-27 | `contracts/core/CacheManagerAutomation.sol`, `contracts/core/BiddingEscrow.sol` | [`5a4a620`](https://github.com/CoBuilders-xyz/stylus-cm-contracts/commit/5a4a62000928de3b86e7a7e6313ba54946d6912b) | [`82f963a`](https://github.com/CoBuilders-xyz/stylus-cm-contracts/commit/82f963ae45441c8c0a558735e876183370d7a7c9) (merged in [#22](https://github.com/CoBuilders-xyz/stylus-cm-contracts/pull/22), released as v2.0.0) | [PDF](./audits/2026-08-31-cyfrin-cobuilders-cachemanager-automation-v2.0.pdf) |
+
+Findings: 0 critical, 0 high, 0 medium, 8 low, 12 informational, 10 gas optimizations. 22 findings are resolved and 8 are acknowledged. The report lists the status and the rationale for each finding.
+
+The audit covers the commits listed above. Changes made after the fix commit are not audited.
+
+### Dependencies
+
 This repository uses OpenZeppelin's battle-tested implementations for:
 
-- Access control (Ownable)
+- Access control (Ownable2Step)
 - Reentrancy protection
 - Safe math operations
 - Escrow functionality

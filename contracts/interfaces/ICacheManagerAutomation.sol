@@ -7,9 +7,11 @@ interface ICacheManagerAutomation {
     // Structs
     struct ContractConfig {
         address contractAddress;
-        uint256 maxBid;
-        bool enabled;
+        /// @notice Controls automated bidding only; activation is independently
+        ///         controlled by autoActivate.
+        bool biddingEnabled;
         bool autoActivate;
+        uint256 maxBid;
         uint256 maxActivationCost;
     }
     struct BidRequest {
@@ -57,42 +59,11 @@ interface ICacheManagerAutomation {
         address indexed contractAddress
     );
     event BalanceUpdated(address indexed user, uint256 newBalance);
-    event BidAttempted(
-        address indexed user,
-        address indexed contractAddress,
-        uint256 bid,
-        bool success
-    );
     event BidError(
         address indexed user,
         address indexed contractAddress,
         uint256 bid,
         string reason
-    );
-    event Paused(address indexed account);
-    event Unpaused(address indexed account);
-    event ContractOperationPerformed(
-        address indexed user,
-        address indexed contractAddress,
-        string operation,
-        uint256 timestamp
-    );
-    event BidDetails(
-        address indexed user,
-        address indexed contractAddress,
-        uint256 bidAmount,
-        uint256 minBid,
-        uint256 maxBid,
-        uint256 userBalance,
-        bool success
-    );
-    event MinBidCheck(address indexed contractAddress, uint256 minBid);
-
-    event UpkeepPerformed(
-        uint256 totalContracts,
-        uint256 successfulBids,
-        uint256 failedBids,
-        uint256 timestamp
     );
     event ActivationPerformed(
         address indexed user,
@@ -117,14 +88,6 @@ interface ICacheManagerAutomation {
         address indexed contractAddress,
         bytes data
     );
-    event UserBalanceOperation(
-        address indexed user,
-        string operation,
-        uint256 amount,
-        uint256 newBalance,
-        uint256 timestamp
-    );
-
     // Parameter change events
     event MaxContractsPerUserUpdated(uint256 oldValue, uint256 newValue);
     event MinMaxBidAmountUpdated(uint256 oldValue, uint256 newValue);
@@ -141,22 +104,15 @@ interface ICacheManagerAutomation {
         address indexed contractAddress,
         bool autoActivate
     );
+    event ContractBiddingEnabledUpdated(
+        address indexed user,
+        address indexed contractAddress,
+        bool biddingEnabled
+    );
     event ContractMaxActivationCostUpdated(
         address indexed user,
         address indexed contractAddress,
         uint256 maxActivationCost
-    );
-
-    // Debug events
-    event DebugBidCheck(
-        address indexed user,
-        address indexed contractAddress,
-        string step
-    );
-    event DebugMinBidFetch(
-        address indexed contractAddress,
-        uint192 minBid,
-        bool success
     );
 
     // Errors
@@ -165,7 +121,6 @@ interface ICacheManagerAutomation {
     error InsufficientBalance();
     error ContractNotFound();
     error TooManyContracts();
-    error ContractPaused();
     error ContractAlreadyExists();
     error ExceedsMaxUserFunds();
     error InvalidFundAmount();
@@ -173,19 +128,31 @@ interface ICacheManagerAutomation {
     error TooManyActivations();
     error InvalidActivationCost();
     error UnauthorizedSender();
+    error OwnershipRenunciationDisabled();
+    error IndexOutOfBounds();
+    error InvalidMaxContractsPerUser();
+    error InvalidMinMaxBidAmount();
+    error InvalidMinFundAmount();
+    error InvalidMaxUserFunds();
+    error InvalidMaxBidsPerIteration();
+    error InvalidMaxUsersPerPage();
+    error InvalidCacheThreshold();
+    error InvalidHorizonSeconds();
+    error InvalidBidIncrement();
+    error InvalidMaxActivationsPerIteration();
 
     // Functions
     function insertContract(
         address _contract,
         uint256 _maxBid,
-        bool _enabled,
+        bool _biddingEnabled,
         bool _autoActivate,
         uint256 _maxActivationCost
     ) external payable;
     function updateContract(
         address _contract,
         uint256 _maxBid,
-        bool _enabled,
+        bool _biddingEnabled,
         bool _autoActivate,
         uint256 _maxActivationCost
     ) external;

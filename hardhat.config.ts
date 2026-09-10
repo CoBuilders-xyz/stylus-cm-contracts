@@ -1,13 +1,15 @@
 import { HardhatUserConfig } from 'hardhat/config';
 import '@nomicfoundation/hardhat-toolbox';
 import '@nomicfoundation/hardhat-ignition-ethers';
-import '@openzeppelin/hardhat-upgrades';
 import { networks } from './config/networks';
 import { ignition } from './config/ignition';
 
 const config: HardhatUserConfig = {
   networks,
   ignition,
+  etherscan: {
+    apiKey: process.env.ETHERSCAN_API_KEY || '',
+  },
   solidity: {
     compilers: [
       {
@@ -18,6 +20,7 @@ const config: HardhatUserConfig = {
             runs: 200,
           },
           viaIR: true,
+          evmVersion: 'paris',
         },
       },
     ],
